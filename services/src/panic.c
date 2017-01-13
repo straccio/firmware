@@ -13,6 +13,7 @@
 #include "delay_hal.h"
 #include "watchdog_hal.h"
 #include "interrupts_hal.h"
+#include "hal_platform.h"
 #include "core_hal.h"
 
 
@@ -45,7 +46,7 @@ void panic_(ePanicCode code, void* extraInfo, void (*HAL_Delay_Microseconds)(uin
         LED_Signaling_Stop();
         uint16_t c;
         int loops = 2;
-        log_direct_("!");
+        LOG_PRINT(TRACE, "!");
         LED_Off(LED_RGB);
         while(loops) {
                 // preamble
@@ -87,8 +88,8 @@ void panic_(ePanicCode code, void* extraInfo, void (*HAL_Delay_Microseconds)(uin
             }
             // pause
             HAL_Delay_Microseconds(MS2u(800));
-#ifdef RELEASE_BUILD
-            if (--loops == 0) HAL_Core_System_Reset();
+#if defined(RELEASE_BUILD) || defined(PANIC_BUT_KEEP_CALM)
+            if (--loops == 0) HAL_Core_System_Reset_Ex(RESET_REASON_PANIC, code, NULL);
 #endif
         }
 

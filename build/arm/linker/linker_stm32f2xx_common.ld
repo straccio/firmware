@@ -49,6 +49,8 @@ SECTIONS
         *(.glue_7)
         *(.glue_7t)
 
+        . = ALIGN(0x4);
+
         link_constructors_location = .;
         chk_system_pre_init_start = .;
         KEEP (*(.module_pre_init))
@@ -97,7 +99,8 @@ SECTIONS
    	 _edata = . ;
     } >RAM AT>APP_FLASH
 
-	INCLUDE backup_ram.ld
+	INCLUDE backup_ram_system.ld
+	INCLUDE backup_ram_user.ld
 
     /* This is the uninitialized data section */
     .bss :

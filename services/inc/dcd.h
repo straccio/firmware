@@ -18,6 +18,7 @@
  */
 
 #include <stddef.h>
+#include <stdint.h>
 
 /**
  * Emulates rewritable storage using two flash blocks.
@@ -117,7 +118,7 @@ private:
 
     void write(Sector sector, const Header& header)
     {
-        store.write(addressOf(sector), (void*)&header, sizeof(header));
+        store.write(addressOf(sector), &header, sizeof(header));
     }
 
     void initialize(Sector sector)
@@ -201,7 +202,7 @@ public:
 
         Header header;
         header.make_invalid();
-        error = store.write(addressOf(current), (const void*)&header, sizeof(header));
+        error = store.write(addressOf(current), &header, sizeof(header));
         return error;
     }
 

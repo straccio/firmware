@@ -49,11 +49,13 @@ typedef struct {
 } module_bounds_t;
 
 typedef enum {
+    MODULE_VALIDATION_PASSED           = 0,
     MODULE_VALIDATION_INTEGRITY        = 1<<1,
     MODULE_VALIDATION_DEPENDENCIES     = 1<<2,
     MODULE_VALIDATION_RANGE            = 1<<3,
     MODULE_VALIDATION_PLATFORM         = 1<<4,
     MODULE_VALIDATION_PRODUCT          = 1<<5,
+    MODULE_VALIDATION_DEPENDENCIES_FULL= 1<<6,
     MODULE_VALIDATION_END = 0x7FFF
 } module_validation_flags_t;
 
@@ -117,6 +119,11 @@ flash_device_t HAL_OTA_FlashDevice();
  * @param length
  */
 bool HAL_FLASH_Begin(uint32_t address, uint32_t length, void* reserved);
+
+/**
+ * Updates part of the OTA image.
+ * @result 0 on success. non-zero on error.
+ */
 int HAL_FLASH_Update(const uint8_t *pBuffer, uint32_t address, uint32_t length, void* reserved);
 
 typedef enum {
@@ -125,7 +132,7 @@ typedef enum {
     HAL_UPDATE_APPLIED
 } hal_update_complete_t;
 
-hal_update_complete_t HAL_FLASH_End(void* reserved);
+hal_update_complete_t HAL_FLASH_End(hal_module_t* module);
 
 uint32_t HAL_FLASH_ModuleAddress(uint32_t address);
 uint32_t HAL_FLASH_ModuleLength(uint32_t address);
@@ -138,7 +145,7 @@ void HAL_OTA_Flashed_ResetStatus(void);
 
 /**
  * Set the claim code for this device.
- * @param code  The claim code to set. If null, clears the claim code.
+ * @param code  The claim code to set. If null, clears the claim code and registers the device as claimed.
  * @return 0 on success.
  */
 uint16_t HAL_Set_Claim_Code(const char* code);
@@ -151,6 +158,11 @@ uint16_t HAL_Set_Claim_Code(const char* code);
  */
 uint16_t HAL_Get_Claim_Code(char* buffer, unsigned len);
 
+/**
+ * Determines if this device has been claimed.
+ */
+bool HAL_IsDeviceClaimed(void* reserved);
+
 typedef enum
 {
   IP_ADDRESS = 0, DOMAIN_NAME = 1, INVALID_INTERNET_ADDRESS = 0xff
@@ -161,13 +173,19 @@ typedef struct __attribute__ ((__packed__)) ServerAddress_ {
   uint8_t addr_type;
   uint8_t length;
   union __attribute__ ((__packed__)) {
-    char domain[127];
+    char domain[64];
     uint32_t ip;
   };
+  uint16_t port;
+  /**
+   * Make up to 128 bytes.
+   */
+  uint8_t padding[60];
 } ServerAddress;
 
 STATIC_ASSERT(ServerAddress_ip_offset, offsetof(ServerAddress, ip)==2);
 STATIC_ASSERT(ServerAddress_domain_offset, offsetof(ServerAddress, domain)==2);
+STATIC_ASSERT(ServerAddress_size, sizeof(ServerAddress)==128);
 
 
 /* Length in bytes of DER-encoded 2048-bit RSA public key */

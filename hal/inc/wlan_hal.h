@@ -56,8 +56,8 @@ extern uint32_t lastEvent;
           WLAN_SMART_CONFIG_FINISHED,WLAN_SERIAL_CONFIG_DONE,WLAN_CONNECTED,WLAN_DHCP,WLAN_CAN_SHUTDOWN); \
     DEBUG("\r\nSPARK_WLAN_RESET=%d\r\nSPARK_WLAN_SLEEP=%d\r\nSPARK_WLAN_STARTED=%d\r\nSPARK_CLOUD_CONNECT=%d", \
            SPARK_WLAN_RESET,SPARK_WLAN_SLEEP,SPARK_WLAN_STARTED,SPARK_CLOUD_CONNECT); \
-    DEBUG("\r\nSPARK_CLOUD_SOCKETED=%d\r\nSPARK_CLOUD_CONNECTED=%d\r\nSPARK_FLASH_UPDATE=%d\r\nSPARK_LED_FADE=%d\r\n", \
-           SPARK_CLOUD_SOCKETED,SPARK_CLOUD_CONNECTED,SPARK_FLASH_UPDATE,SPARK_LED_FADE); \
+    DEBUG("\r\nSPARK_CLOUD_SOCKETED=%d\r\nSPARK_CLOUD_CONNECTED=%d\r\nSPARK_FLASH_UPDATE=%d\r\n", \
+           SPARK_CLOUD_SOCKETED,SPARK_CLOUD_CONNECTED,SPARK_FLASH_UPDATE); \
  } while(0)
 
 #define ON_EVENT_DELTA()  do { if (lastEvent != 0) { uint32_t l; GET_LAST_EVENT(l); DEBUG("\r\nAsyncEvent 0x%04x", l); DUMP_STATE();}} while(0)
@@ -73,13 +73,21 @@ typedef enum
   ANT_INTERNAL = 0, ANT_EXTERNAL = 1, ANT_AUTO = 3
 } WLanSelectAntenna_TypeDef;
 
+typedef int wlan_result_t;
+
 typedef struct __attribute__((__packed__))  _WLanConfig_t {
     uint16_t size;
     NetworkConfig nw;
     uint8_t uaSSID[33];
+    uint8_t BSSID[6];			// since V2
 } WLanConfig;
 
-typedef int wlan_result_t;
+#define WLanConfig_Size_V1   (sizeof(NetworkConfig)+2+33)
+#define WLanConfig_Size_V2   (WLanConfig_Size_V1+6)
+
+STATIC_ASSERT(WLanConfigSize, sizeof(WLanConfig)==WLanConfig_Size_V2);
+
+
 
 /**
  * Connect start the wireless connection.
@@ -200,24 +208,6 @@ void SPARK_WLAN_SmartConfigProcess();
 
 void HAL_WLAN_notify_simple_config_done();
 
-/**
- * Notification that the wifi network has been connected to.
- */
-void HAL_WLAN_notify_connected();
-void HAL_WLAN_notify_disconnected();
-
-/**
- * Notification that an IP address has been received via DHCP.
- * todo - what with the case of static IP config?
- */
-void HAL_WLAN_notify_dhcp(bool dhcp);
-
-void HAL_WLAN_notify_can_shutdown();
-
-/**
- * Notification that an open socket has been closed.
- */
-void HAL_WLAN_notify_socket_closed(sock_handle_t socket);
 
 /**
  * Select the Wi-Fi antenna.
@@ -284,6 +274,19 @@ typedef void (*wlan_scan_result_t)(WiFiAccessPoint* ap, void* cookie);
  * @return negative on error.
  */
 int wlan_scan(wlan_scan_result_t callback, void* cookie);
+
+/**
+ * Lists all WLAN credentials currently stored on the device
+ * @param callback  The callback that receives each stored AP
+ * @param callback_data An opaque handle that is passed to the callback.
+ * @return count of stored credentials, negative on error.
+ */
+int wlan_get_credentials(wlan_scan_result_t callback, void* callback_data);
+
+/**
+ * @return true if wi-fi powersave clock is enabled, false if disabled.
+ */
+bool isWiFiPowersaveClockDisabled(void);
 
 #ifdef	__cplusplus
 }

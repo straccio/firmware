@@ -8,6 +8,7 @@
 #include "wiced_security.h"
 #include "jsmn.h"
 #include "softap.h"
+#include "softap_http.h"
 #include "dct.h"
 #include "ota_flash_hal.h"
 #include "spark_protocol_functions.h"
@@ -15,11 +16,9 @@
 #include "core_hal.h"
 #include "rng_hal.h"
 #include "ota_flash_hal_stm32f2xx.h"
+#include "bytes2hexbuf.h"
 
-#if defined(SYSTEM_MINIMAL)
-#define SOFTAP_HTTP 0
-#else
-#define SOFTAP_HTTP 1
+#if SOFTAP_HTTP
 #include "http_server.h"
 #endif
 
@@ -57,65 +56,9 @@ int dns_resolve_query(const char* query)
 
 bool is_device_claimed()
 {
-    const uint8_t* claimed = (const uint8_t*)dct_read_app_data(DCT_DEVICE_CLAIMED_OFFSET);
-    return (*claimed)=='1';
+	return HAL_IsDeviceClaimed(nullptr);
 }
 
-/**
- * Abstraction of an input stream.
- */
-struct Reader {
-    typedef int (*callback_t)(Reader* stream, uint8_t *buf, size_t count);
-
-    callback_t callback;
-    size_t bytes_left;
-    void* state;
-
-    inline int read(uint8_t* buf, size_t length) {
-        int result = -1;
-        if (bytes_left) {
-            result = callback(this, buf, std::min(length, bytes_left));
-            if (result>0)
-                bytes_left -= result;
-        }
-        return result;
-    }
-
-    /**
-     * Allocates a buffer with the remaining data as a string.
-     * It's the caller's responsibility to free the buffer with free().
-     * @return
-     */
-    char* fetch_as_string() {
-        char* buf = (char*)malloc(bytes_left+1);
-        if (buf) {
-            int len = bytes_left;
-            read((uint8_t*)buf, bytes_left);
-            buf[len] = 0;
-            bytes_left = 0;
-        }
-        return buf;
-    }
-};
-
-/**
- * Abstraction of an output stream.
- */
-struct Writer {
-    typedef void (*callback_t)(Writer* stream, const uint8_t *buf, size_t count);
-
-    callback_t callback;
-    void* state;
-
-    inline void write(const uint8_t* buf, size_t length) {
-        callback(this, buf, length);
-    }
-
-    void write(const char* s) {
-        write((const uint8_t*)s, strlen(s));
-    }
-
-};
 
 /**
  * A command that consumes data from a reader and produces a result to a writer.
@@ -134,9 +77,7 @@ public:
 
 /**
  * Base class for commands whose requests and responses are encoded using
- * protobuf. Subclasses must ensure the req_ and resp_ members are set to
- * the nanopb fields and data used to decode the request and encode
- * the response.
+ * json.
  */
 class JSONCommand : public Command {
 
@@ -150,11 +91,17 @@ protected:
 
         unsigned int n = 64;
         jsmntok_t* tokens = (jsmntok_t*)malloc(sizeof(jsmntok_t) * n);
+        if (!tokens) return nullptr;
         int ret = jsmn_parse(&parser, js, strlen(js), tokens, n, NULL);
         while (ret==JSMN_ERROR_NOMEM)
         {
             n = n * 2 + 1;
+            jsmntok_t* prev = tokens;
             tokens = (jsmntok_t*)realloc(tokens, sizeof(jsmntok_t) * n);
+            if (!tokens) {
+            		free(prev);
+            		return nullptr;
+            }
             ret = jsmn_parse(&parser, js, strlen(js), tokens, n, NULL);
         }
         return tokens;
@@ -254,83 +201,102 @@ class JSONRequestCommand : public JSONCommand {
 
 protected:
 
+	/**
+	 * Template method allowing subclasses to handle the parsed json keys.
+	 * @param index The index into the array of keys passed to parse_json_requet of the key that has been matched.
+	 */
     virtual bool parsed_key(unsigned index)=0;
+
+    /**
+     * Template methods allowing subclasses to handle the parsed JSON values.
+     * @param index	the key index this value belongs to
+     * @param t		the jsmn token
+     * @param value	The string value.
+     *
+     * Note that the t and value parameters have a lifetime only for the duration of the method.
+     * They should not be stored for later use.
+     */
     virtual bool parsed_value(unsigned index, jsmntok_t* t, char* value)=0;
 
     int parse_json_request(Reader& reader, const char* const keys[], const jsmntype_t types[], unsigned count) {
 
-        char* js = reader.fetch_as_string();
-        if (!js)
-            return -1;
-
-        jsmntok_t *tokens = json_tokenise(js);
-
-        enum parse_state { START, KEY, VALUE, SKIP, STOP };
-
-        parse_state state = START;
-        jsmntype_t expected_type = JSMN_OBJECT;
-
-        int result = 0;
-        int key = -1;
-
-        for (size_t i = 0, j = 1; j > 0; i++, j--)
+        int result = -1;
+    		char* js = reader.fetch_as_string();
+        if (js)
         {
-            jsmntok_t *t = &tokens[i];
-            if (t->type == JSMN_ARRAY || t->type == JSMN_OBJECT)
-                j += t->size * 2;
+			jsmntok_t *tokens = json_tokenise(js);
+			if (tokens)
+			{
+				enum parse_state { START, KEY, VALUE, SKIP, STOP };
 
-            switch (state)
-            {
-                case START:
-                    state = KEY;
-                    break;
+				parse_state state = START;
+				jsmntype_t expected_type = JSMN_OBJECT;
 
-                case KEY:
-                    state = VALUE;
-                    key = -1;
-                    for (size_t i = 0; i < count; i++)
-                    {
-                        if (json_token_streq(js, t, keys[i]))
-                        {
-                            expected_type = types[i];
-                            if (parsed_key(i)) {
-                                key = i;
-                                JSON_DEBUG( ( "key: %s %d %d\n", keys[i], i, (int)expected_type ) );
-                            }
-                        }
-                    }
-                    if (key==-1) {
-                        JSON_DEBUG( ( "unknown key: %s\n", json_token_tostr(js, t) ) );
-                        result = -1;
-                    }
-                    break;
+				result = 0;
+				int key = -1;
 
-                case VALUE:
-                    if (key!=-1) {
-                        if (t->type != expected_type) {
-                            result = -1;
-                            JSON_DEBUG( ( "type mismatch\n" ) );
-                        }
-                        else {
-                            char *str = json_token_tostr(js, t);
-                            if (!parsed_value(key, t, str))
-                                result = -1;
-                        }
-                    }
-                    state = KEY;
-                    break;
+				for (size_t i = 0, j = 1; j > 0; i++, j--)
+				{
+					jsmntok_t *t = &tokens[i];
+					if (t->type == JSMN_ARRAY || t->type == JSMN_OBJECT)
+						j += t->size * 2;
 
-                case STOP: // Just consume the tokens
-                    break;
+					switch (state)
+					{
+						case START:
+							state = KEY;
+							break;
 
-                default:
-                    result = -1;
-            }
+						case KEY:
+							state = VALUE;
+							key = -1;
+							for (size_t i = 0; i < count; i++)
+							{
+								if (json_token_streq(js, t, keys[i]))
+								{
+									expected_type = types[i];
+									if (parsed_key(i)) {
+										key = i;
+										JSON_DEBUG( ( "key: %s %d %d\n", keys[i], i, (int)expected_type ) );
+									}
+								}
+							}
+							if (key==-1) {
+								JSON_DEBUG( ( "unknown key: %s\n", json_token_tostr(js, t) ) );
+								result = -1;
+							}
+							break;
+
+						case VALUE:
+							if (key!=-1) {
+								if (t->type != expected_type) {
+									result = -1;
+									JSON_DEBUG( ( "type mismatch\n" ) );
+								}
+								else {
+									char *str = json_token_tostr(js, t);
+									if (!parsed_value(key, t, str))
+										result = -1;
+								}
+							}
+							state = KEY;
+							break;
+
+						case STOP: // Just consume the tokens
+							break;
+
+						default:
+							result = -1;
+					}
+				}
+				free(tokens);
+			}
+			free(js);
         }
-        free(js);
         return result;
     }
 };
+
 
 class VersionCommand : public JSONCommand {
 
@@ -489,6 +455,10 @@ int decrypt(char* plaintext, int max_plaintext_len, char* hex_encoded_ciphertext
  * soft-ap process complete.
  */
 class ConfigureAPCommand : public JSONRequestCommand {
+
+	/**
+	 * Receives the data from parsing the json.
+	 */
     ConfigureAP configureAP;
 
     static const char* KEY[5];
@@ -603,15 +573,6 @@ protected:
     }
 };
 
-static inline char ascii_nibble(uint8_t nibble) {
-    char hex_digit = nibble + 48;
-    if (57 < hex_digit)
-        hex_digit += 7;
-    return hex_digit;
-}
-
-char* bytes2hexbuf(const uint8_t* buf, unsigned len, char* out);
-
 class DeviceIDCommand : public JSONCommand {
 
     char device_id[25];
@@ -675,11 +636,14 @@ protected:
 
 class SetValueCommand  : public JSONRequestCommand {
 
+	static const unsigned MAX_KEY_LEN = 3;
+	static const unsigned MAX_VALUE_LEN = 64;
+
     static const char* const KEY[2];
     static const jsmntype_t TYPE[2];
 
-    const char* key;
-    const char* value;
+    char key[MAX_KEY_LEN+1];
+    char value[MAX_VALUE_LEN+1];
 
 protected:
 
@@ -687,24 +651,30 @@ protected:
         return true;
     }
 
+    inline void assign(char* target, const char* value, unsigned len) {
+    		strncpy(target, value, len);
+    		target[len-1] = '\0';
+    }
+
     virtual bool parsed_value(unsigned index, jsmntok_t* t, char* value) {
         if (index==0)     // key
-            this->key = value;
+        		assign(this->key, value, MAX_KEY_LEN);
         else
-            this->value = value;
+        		assign(this->value, value, MAX_VALUE_LEN);
         return true;
     }
 
     int parse_request(Reader& reader) {
-        key = NULL; value = NULL;
+        key[0] = 0; value[0] = 0;
         return parse_json_request(reader, KEY, TYPE, arraySize(KEY));
     }
 
     int process() {
         int result = -1;
-        if (key && value) {
-            if (!strcmp(key,"cc"))
+        if (*key && *value) {
+            if (!strcmp(key,"cc")) {
                 result = HAL_Set_Claim_Code(value);
+            }
         }
         return result;
     }
@@ -749,31 +719,31 @@ void random_code(uint8_t* dest, unsigned len) {
     bytesToCode(value, (char*)dest, len);
 }
 
-const int DEVICE_ID_LEN = 4;
+const int DEVICE_CODE_LEN = 4;
 
-STATIC_ASSERT(device_id_len_is_same_as_dct_storage, DEVICE_ID_LEN<=DCT_DEVICE_ID_SIZE);
+STATIC_ASSERT(device_code_len_is_same_as_dct_storage, DEVICE_CODE_LEN<=DCT_DEVICE_CODE_SIZE);
 
 
 extern "C" bool fetch_or_generate_setup_ssid(wiced_ssid_t* SSID);
 
 /**
- * Copies the device ID to the destination, generating it if necessary.
+ * Copies the device code to the destination, generating it if necessary.
  * @param dest      A buffer with room for at least 6 characters. The
- *  device ID is copied here, without a null terminator.
- * @return true if the device ID was generated.
+ *  device code is copied here, without a null terminator.
+ * @return true if the device code was generated.
  */
-bool fetch_or_generate_device_id(wiced_ssid_t* SSID) {
-    const uint8_t* suffix = (const uint8_t*)dct_read_app_data(DCT_DEVICE_ID_OFFSET);
+bool fetch_or_generate_device_code(wiced_ssid_t* SSID) {
+    const uint8_t* suffix = (const uint8_t*)dct_read_app_data(DCT_DEVICE_CODE_OFFSET);
     int8_t c = (int8_t)*suffix;    // check out first byte
     bool generate = (!c || c<0);
     uint8_t* dest = SSID->value+SSID->length;
-    SSID->length += DEVICE_ID_LEN;
+    SSID->length += DEVICE_CODE_LEN;
     if (generate) {
-        random_code(dest, DEVICE_ID_LEN);
-        dct_write_app_data(dest, DCT_DEVICE_ID_OFFSET, DEVICE_ID_LEN);
+        random_code(dest, DEVICE_CODE_LEN);
+        dct_write_app_data(dest, DCT_DEVICE_CODE_OFFSET, DEVICE_CODE_LEN);
     }
     else {
-        memcpy(dest, suffix, DEVICE_ID_LEN);
+        memcpy(dest, suffix, DEVICE_CODE_LEN);
     }
     return generate;
 }
@@ -800,7 +770,7 @@ bool fetch_or_generate_ssid_prefix(wiced_ssid_t* SSID) {
 bool fetch_or_generate_setup_ssid(wiced_ssid_t* SSID) {
     bool result = fetch_or_generate_ssid_prefix(SSID);
     SSID->value[SSID->length++] = '-';
-    result |= fetch_or_generate_device_id(SSID);
+    result |= fetch_or_generate_device_code(SSID);
     return result;
 }
 
@@ -1005,7 +975,7 @@ int read_from_http_body(Reader* r, uint8_t* target, size_t length) {
 
 void reader_from_http_body(Reader* r, wiced_http_message_body_t* body)
 {
-    if (body->total_message_data_remaining==0)
+    if (false && body->total_message_data_remaining==0)
     {
         reader_from_buffer(r, (uint8_t*)body->data, body->message_data_length);
     }
@@ -1020,6 +990,18 @@ void reader_from_http_body(Reader* r, wiced_http_message_body_t* body)
 #if SOFTAP_HTTP
 extern "C" wiced_http_page_t soft_ap_http_pages[];
 
+extern const char* SOFT_AP_MSG;
+extern "C" void default_page_handler(const char* url, ResponseCallback* cb, void* cbArg, Reader* body, Writer* result, void* reserved)
+{
+	if (strcmp(url,"/index")) {
+		cb(cbArg, 0, 404, 0, 0);	// not found
+	}
+	else {
+		Header h("Location: /hello\r\n");
+		cb(cbArg, 0, 301, "text/plain", &h);
+	}
+}
+
 
 static void http_write(Writer* w, const uint8_t *buf, size_t count) {
     wiced_http_response_stream_t* stream = (wiced_http_response_stream_t*)w->state;
@@ -1031,10 +1013,64 @@ static void http_stream_writer(Writer& w, wiced_http_response_stream_t* stream) 
     w.state = stream;
 }
 
+/**
+ * Maps from the status code as an integer to the WICED HTTP server codes.
+ */
+http_status_codes_t status_from_code(uint16_t response)
+{
+	switch (response) {
+	case 200:
+		return HTTP_200_TYPE;
+	case 204:
+		return HTTP_204_TYPE;
+	case 207:
+		return HTTP_207_TYPE;
+	case 301:
+		return HTTP_301_TYPE;
+	case 400:
+	default:
+		return HTTP_400_TYPE;
+	case 403:
+		return HTTP_403_TYPE;
+	case 404:
+		return HTTP_404_TYPE;
+	case 405:
+		return HTTP_405_TYPE;
+	case 406:
+		return HTTP_406_TYPE;
+	case 412:
+		return HTTP_412_TYPE;
+	case 415:
+		return HTTP_415_TYPE;
+	case 429:
+		return HTTP_429_TYPE;
+	case 444:
+		return HTTP_444_TYPE;
+	case 470:
+		return HTTP_470_TYPE;
+	case 500:
+		return HTTP_500_TYPE;
+	case 504:
+		return HTTP_504_TYPE;
+	}
+}
+
+int writeHeader(void* cbArg, uint16_t flags, uint16_t responseCode, const char* mimeType, Header* header)
+{
+	const char* header_list = nullptr;
+	if (header && header->size) {
+		header_list = header->header_list;
+	}
+
+   return wiced_http_response_stream_write_header( (wiced_http_response_stream_t*)cbArg, status_from_code(responseCode),
+		   CHUNKED_CONTENT_LENGTH, HTTP_CACHE_DISABLED, http_server_get_mime_type(mimeType), header_list);
+}
+
+
 class HTTPDispatcher {
     wiced_http_server_t server;
 
-    wiced_http_page_t page[9];
+    wiced_http_page_t page[10];
 
     void setCommand(unsigned index, Command& cmd) {
         page[index].url_content.dynamic_data.generator = handle_command;
@@ -1052,6 +1088,8 @@ public:
         setCommand(6, commands.connectAP);
         setCommand(7, commands.publicKey);
         setCommand(8, commands.setValue);
+        page[9].url_content.dynamic_data.generator = handle_app_renderer;
+        page[9].url_content.dynamic_data.arg = (void*)softap_get_application_page_handler();
     }
 
     void start() {
@@ -1068,7 +1106,7 @@ public:
         reader_from_http_body(&r, http_data);
         wiced_http_response_stream_enable_chunked_transfer( stream );
         stream->cross_host_requests_enabled = WICED_TRUE;
-        wiced_http_response_stream_write_header( stream, HTTP_200_TYPE, CHUNKED_CONTENT_LENGTH, HTTP_CACHE_DISABLED, MIME_TYPE_JSON );
+        wiced_http_response_stream_write_header( stream, HTTP_200_TYPE, CHUNKED_CONTENT_LENGTH, HTTP_CACHE_DISABLED, MIME_TYPE_JSON, nullptr);
         Writer w;
         http_stream_writer(w, stream);
         int result = cmd->execute(r, w);
@@ -1076,8 +1114,23 @@ public:
         return result;
     }
 
+    static int32_t handle_app_renderer(const char* url, wiced_http_response_stream_t* stream, void* arg, wiced_http_message_body_t* http_data) {
+    	    PageProvider* p = (PageProvider*)arg;
+        Reader r;
+        reader_from_http_body(&r, http_data);
+        wiced_http_response_stream_enable_chunked_transfer( stream );
+        stream->cross_host_requests_enabled = WICED_TRUE;
+        Writer w;
+        http_stream_writer(w, stream);
+        if (p)
+        		p(url, &writeHeader, stream, &r, &w, nullptr);
+        cleanup_http_body(http_data);
+        return 0;
+    }
+
 };
 #endif
+
 
 /**
  * Parses a very simple protocol for sending command requests over a stream

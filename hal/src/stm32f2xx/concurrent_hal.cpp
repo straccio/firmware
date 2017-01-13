@@ -29,6 +29,8 @@
 #include "task.h"
 #include "semphr.h"
 #include "timers.h"
+#include "stm32f2xx.h"
+#include "interrupts_hal.h"
 #include <mutex>
 
 // For OpenOCD FreeRTOS support
@@ -298,7 +300,7 @@ void os_condition_variable_notify_all(condition_variable_t cond)
 }
 
 
-int os_queue_create(os_queue_t* queue, size_t item_size, size_t item_count)
+int os_queue_create(os_queue_t* queue, size_t item_size, size_t item_count, void*)
 {
     *queue = xQueueCreate(item_count, item_size);
     return *queue==NULL;
@@ -306,19 +308,23 @@ int os_queue_create(os_queue_t* queue, size_t item_size, size_t item_count)
 
 static_assert(portMAX_DELAY==CONCURRENT_WAIT_FOREVER, "expected portMAX_DELAY==CONCURRENT_WAIT_FOREVER");
 
-int os_queue_put(os_queue_t queue, const void* item, system_tick_t delay)
+int os_queue_put(os_queue_t queue, const void* item, system_tick_t delay, void*)
 {
-    return xQueueSend(queue, item, delay)!=pdTRUE;
+	if (HAL_IsISR())
+		return xQueueSendFromISR(queue, item, nullptr)!=pdTRUE;
+	else
+		return xQueueSend(queue, item, delay)!=pdTRUE;
 }
 
-int os_queue_take(os_queue_t queue, void* item, system_tick_t delay)
+int os_queue_take(os_queue_t queue, void* item, system_tick_t delay, void*)
 {
     return xQueueReceive(queue, item, delay)!=pdTRUE;
 }
 
-void os_queue_destroy(os_queue_t queue)
+int os_queue_destroy(os_queue_t queue, void*)
 {
     vQueueDelete(queue);
+    return 0;
 }
 
 
@@ -381,9 +387,9 @@ int os_mutex_recursive_unlock(os_mutex_recursive_t mutex)
 void os_thread_scheduling(bool enabled, void* reserved)
 {
     if (enabled)
-        taskEXIT_CRITICAL();
+        xTaskResumeAll();
     else
-        taskENTER_CRITICAL();
+        vTaskSuspendAll();
 }
 
 int os_semaphore_create(os_semaphore_t* semaphore, unsigned max, unsigned initial)
@@ -411,9 +417,9 @@ int os_semaphore_give(os_semaphore_t semaphore, bool reserved)
 /**
  * Create a new timer. Returns 0 on success.
  */
-int os_timer_create(os_timer_t* timer, unsigned period, void (*callback)(os_timer_t timer), void* const timer_id, void* reserved)
+int os_timer_create(os_timer_t* timer, unsigned period, void (*callback)(os_timer_t timer), void* const timer_id, bool one_shot, void* reserved)
 {
-    *timer = xTimerCreate((_CREATE_NAME_TYPE*)"", period, true, timer_id, callback);
+    *timer = xTimerCreate((_CREATE_NAME_TYPE*)"", period, !one_shot, timer_id, callback);
     return *timer==NULL;
 }
 
@@ -445,6 +451,12 @@ int os_timer_change(os_timer_t timer, os_timer_change_t change, bool fromISR, un
             return xTimerStopFromISR(timer, &woken)!=pdPASS;
         else
             return xTimerStop(timer, block)!=pdPASS;
+
+    case OS_TIMER_CHANGE_PERIOD:
+        if (fromISR)
+            return xTimerChangePeriodFromISR(timer, period, &woken)!=pdPASS;
+        else
+            return xTimerChangePeriod(timer, period, block)!=pdPASS;
     }
     return -1;
 }
@@ -452,4 +464,9 @@ int os_timer_change(os_timer_t timer, os_timer_change_t change, bool fromISR, un
 int os_timer_destroy(os_timer_t timer, void* reserved)
 {
     return xTimerDelete(timer, CONCURRENT_WAIT_FOREVER)!=pdPASS;
+}
+
+int os_timer_is_active(os_timer_t timer, void* reserved)
+{
+    return xTimerIsTimerActive(timer) != pdFALSE;
 }

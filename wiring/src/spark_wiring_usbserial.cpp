@@ -25,12 +25,26 @@
  */
 
 #include "spark_wiring_usbserial.h"
+#include "platform_headers.h"
 
 //
 // Constructor
 //
 USBSerial::USBSerial()
 {
+  _serial = HAL_USB_USART_SERIAL;
+  _blocking = true;
+
+  HAL_USB_USART_Config conf = acquireSerialBuffer();
+  HAL_USB_USART_Init(_serial, &conf);
+}
+
+USBSerial::USBSerial(HAL_USB_USART_Serial serial, const HAL_USB_USART_Config& conf)
+{
+  _serial = serial;
+  _blocking = true;
+
+  HAL_USB_USART_Init(_serial, &conf);
 }
 
 //
@@ -39,42 +53,123 @@ USBSerial::USBSerial()
 
 void USBSerial::begin(long speed)
 {
-    USB_USART_Init((unsigned)speed);
+    HAL_USB_USART_Begin(_serial, speed, NULL);
 }
 
 void USBSerial::end()
 {
-    USB_USART_Init(0);
+    HAL_USB_USART_End(_serial);
 }
 
 
 // Read data from buffer
 int USBSerial::read()
 {
-	return USB_USART_Receive_Data(false);
+	return HAL_USB_USART_Receive_Data(_serial, false);
+}
+
+int USBSerial::availableForWrite()
+{
+  return HAL_USB_USART_Available_Data_For_Write(_serial);
 }
 
 int USBSerial::available()
 {
-	return USB_USART_Available_Data();
+	return HAL_USB_USART_Available_Data(_serial);
 }
 
 size_t USBSerial::write(uint8_t byte)
 {
-	USB_USART_Send_Data(byte);
-	return 1;
+  if (HAL_USB_USART_Available_Data_For_Write(_serial) > 0 || _blocking) {
+    HAL_USB_USART_Send_Data(_serial, byte);
+    return 1;
+  }
+  return 0;
 }
 
 void USBSerial::flush()
 {
+  HAL_USB_USART_Flush_Data(_serial);
+}
+
+void USBSerial::blockOnOverrun(bool block)
+{
+  _blocking = block;
 }
 
 int USBSerial::peek()
 {
-	return USB_USART_Receive_Data(true);
+	return HAL_USB_USART_Receive_Data(_serial, true);
+}
+
+USBSerial::operator bool() {
+  return isEnabled();
+}
+
+bool USBSerial::isEnabled() {
+  return HAL_USB_USART_Is_Enabled(_serial);
+}
+
+bool USBSerial::isConnected() {
+  return HAL_USB_USART_Is_Connected(_serial);
+}
+
+unsigned int USBSerial::baud() {
+  return HAL_USB_USART_Baud_Rate(_serial);
 }
 
 // Preinstantiate Objects //////////////////////////////////////////////////////
 #ifdef SPARK_USB_SERIAL
-USBSerial Serial;
+
+HAL_USB_USART_Config __attribute__((weak)) acquireSerialBuffer()
+{
+  HAL_USB_USART_Config conf = {0};
+
+#ifdef USB_SERIAL_USERSPACE_BUFFERS
+  static uint8_t serial_rx_buffer[USB_RX_BUFFER_SIZE];
+  static uint8_t serial_tx_buffer[USB_TX_BUFFER_SIZE];
+
+  conf.rx_buffer = serial_rx_buffer;
+  conf.tx_buffer = serial_tx_buffer;
+  conf.rx_buffer_size = USB_RX_BUFFER_SIZE;
+  conf.tx_buffer_size = USB_TX_BUFFER_SIZE;
 #endif
+
+  return conf;
+}
+
+USBSerial& _fetch_usbserial()
+{
+  HAL_USB_USART_Config conf = acquireSerialBuffer();
+	static USBSerial _usbserial(HAL_USB_USART_SERIAL, conf);
+	return _usbserial;
+}
+
+#if Wiring_USBSerial1
+
+HAL_USB_USART_Config __attribute__((weak)) acquireUSBSerial1Buffer()
+{
+  HAL_USB_USART_Config conf = {0};
+
+#ifdef USB_SERIAL_USERSPACE_BUFFERS
+  static uint8_t usbserial1_rx_buffer[USB_RX_BUFFER_SIZE];
+  static uint8_t usbserial1_tx_buffer[USB_TX_BUFFER_SIZE];
+
+  conf.rx_buffer = usbserial1_rx_buffer;
+  conf.tx_buffer = usbserial1_tx_buffer;
+  conf.rx_buffer_size = USB_RX_BUFFER_SIZE;
+  conf.tx_buffer_size = USB_TX_BUFFER_SIZE;
+#endif
+
+  return conf;
+}
+
+USBSerial& _fetch_usbserial1()
+{
+  HAL_USB_USART_Config conf = acquireUSBSerial1Buffer();
+  static USBSerial _usbserial1(HAL_USB_USART_SERIAL1, conf);
+  return _usbserial1;
+}
+#endif /* Wiring_USBSerial1 */
+
+#endif /* SPARK_USB_SERIAL */

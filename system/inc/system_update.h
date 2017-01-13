@@ -5,6 +5,7 @@
 #include "file_transfer.h"
 #include "static_assert.h"
 #include "appender.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,6 +48,12 @@ void system_lineCodingBitRateHandler(uint32_t bitrate);
 bool system_module_info(appender_fn appender, void* append_data, void* reserved=NULL);
 bool append_system_version_info(Appender* appender);
 
+bool ota_update_info(appender_fn append, void* append_data, void* mod, bool full, void* reserved);
+
+typedef enum {
+    MODULE_INFO_JSON_INCLUDE_PLATFORM_ID = 0x0001
+} module_info_json_flags_t;
+
 /**
  *
  * @param file
@@ -63,7 +70,7 @@ int Spark_Prepare_For_Firmware_Update(FileTransfer::Descriptor& file, uint32_t f
  * @param reserved NULL
  * @return 0 on success.
  */
-int Spark_Finish_Firmware_Update(FileTransfer::Descriptor& file, uint32_t flags, void* reserved);
+int Spark_Finish_Firmware_Update(FileTransfer::Descriptor& file, uint32_t flags, void* module);
 
 /**
  * Provides a chunk of the file data.
@@ -81,35 +88,55 @@ typedef enum
      * When 1, an OTA update is pending, and will start when the SYSTEM_FLAG_OTA_UPDATES_FLAG
      * is set.
      */
-    SYSTEM_FLAG_OTA_UPDATE_PENDING=0,
+    SYSTEM_FLAG_OTA_UPDATE_PENDING,
 
     /**
      * When 0, OTA updates are not started.
      * When 1, OTA updates are started. Default.
      */
-    SYSTEM_FLAG_OTA_UPDATE_ENABLED=1,
+    SYSTEM_FLAG_OTA_UPDATE_ENABLED,
 
     /*
      * When 0, no reset is pending.
      * When 1, a reset is pending. The system will perform the reset
      * when SYSTEM_FLAG_RESET_ENABLED is set to 1.
      */
-    SYSTEM_FLAG_RESET_PENDING=2,
+    SYSTEM_FLAG_RESET_PENDING,
 
     /**
      * When 0, the system is not able to perform a system reset.
      * When 1, thee system will reset the device when a reset is pending.
      */
-    SYSTEM_FLAG_RESET_ENABLED=3,
+    SYSTEM_FLAG_RESET_ENABLED,
 
     /**
-     * When 0, the application code is not paused.
-     * When 1, the application code is paused.
+     * A persistent flag that when set will cause the system to startup
+     * in listening mode if booting in safe mode. The flag is automatically
+     * cleared on reboot.
      */
-    //SYSTEM_FLAG_APPLICATION_PAUSED=4,
-    SYSTEM_FLAG_MAX = 4
+    SYSTEM_FLAG_STARTUP_SAFE_LISTEN_MODE,
+
+	/**
+	 * Enable/Disable use of serial1 during setup.
+	 */
+	SYSTEM_FLAG_WIFITESTER_OVER_SERIAL1,
+
+    /**
+     * Enable/disable publishing of last reset info to the cloud.
+     */
+    SYSTEM_FLAG_PUBLISH_RESET_INFO,
+
+    /**
+     * When 0, the system doesn't reset network connection on cloud connection errors.
+     * When 1 (default), the system resets network connection after a number of failed attempts to
+     * connect to the cloud.
+     */
+    SYSTEM_FLAG_RESET_NETWORK_ON_CLOUD_ERRORS,
+
+    SYSTEM_FLAG_MAX
 
 } system_flag_t;
+
 
 void system_shutdown_if_needed();
 void system_pending_shutdown();

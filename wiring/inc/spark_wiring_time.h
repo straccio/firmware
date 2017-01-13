@@ -57,9 +57,27 @@ public:
 	static int     year();            			// current four digit year
 	static int     year(time_t t);    			// the year for the given time
 	static time_t  now();              			// return the current time as seconds since Jan 1 1970
+	static time_t  local();						// return the time as seconds since Jan 1 1970 in the local timezone.
 	static void    zone(float GMT_Offset);		// set the time zone (+/-) offset from GMT
+	static float	   zone();						// retrieve the current timezone
 	static void    setTime(time_t t);			// set the given time as unix/rtc time
 
+  operator bool() const;
+  static bool isValid();
+  
+  /* Retrieve the current DST offset that is added to the current local time when
+   * Time.beginDST() has been called.
+   * The default is 1 hour.
+   */
+  static float getDSTOffset();
+  /* Set a custom DST offset */
+  static void setDSTOffset(float offset);
+  /* Add the offset from getDSTOffset() to the current time */
+  static void beginDST();
+  /* Do not add the offset from getDSTOffset() to the current time */
+  static void endDST();
+  /* Returns true if DST is in effect (beginDST() was called previously) */
+  static uint8_t isDST();
 
         /* return string representation of the current time */
         inline String timeStr()

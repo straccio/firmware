@@ -23,9 +23,12 @@
 #include "spark_wiring_platform.h"
 #include "spark_wiring_network.h"
 #include "system_network.h"
-#include "cellular_hal.h"
 
 #if Wiring_Cellular
+
+#include "cellular_hal.h"
+#include "inet_hal.h"
+#include "spark_wiring_cellular_printable.h"
 
 namespace spark {
 
@@ -35,6 +38,9 @@ class CellularClass : public NetworkClass
 
 public:
 
+    IPAddress localIP() {
+        return IPAddress(((CellularConfig*)network_config(*this, 0, NULL))->nw.aucIP);
+    }
     void on() {
         network_on(*this, 0, 0, NULL);
     }
@@ -44,6 +50,10 @@ public:
     void connect(unsigned flags=0) {
         network_connect(*this, flags, 0, NULL);
     }
+    bool connecting(void) {
+        return network_connecting(*this, 0, NULL);
+    }
+
     void disconnect() {
         network_disconnect(*this, 0, NULL);
     }
@@ -58,9 +68,69 @@ public:
         // todo
     }
 
+    void listen(bool begin=true) {
+        network_listen(*this, begin ? 0 : 1, NULL);
+    }
+
+    void setListenTimeout(uint16_t timeout) {
+        network_set_listen_timeout(*this, timeout, NULL);
+    }
+
+    uint16_t getListenTimeout(void) {
+        return network_get_listen_timeout(*this, 0, NULL);
+    }
+
+    bool listening(void) {
+        return network_listening(*this, 0, NULL);
+    }
+
     bool ready()
     {
         return network_ready(*this, 0,  NULL);
+    }
+
+    CellularSignal RSSI();
+
+    bool getDataUsage(CellularData &data_get);
+    bool setDataUsage(CellularData &data_set);
+    bool resetDataUsage(void);
+
+    bool setBandSelect(const char* band);
+    bool setBandSelect(CellularBand &data_set);
+    bool getBandSelect(CellularBand &data_get);
+    bool getBandAvailable(CellularBand &data_get);
+
+    template<typename... Targs>
+    inline int command(const char* format, Targs... Fargs)
+    {
+        return cellular_command(NULL, NULL, 10000, format, Fargs...);
+    }
+
+    template<typename... Targs>
+    inline int command(system_tick_t timeout_ms, const char* format, Targs... Fargs)
+    {
+        return cellular_command(NULL, NULL, timeout_ms, format, Fargs...);
+    }
+
+    template<typename T, typename... Targs>
+    inline int command(int (*cb)(int type, const char* buf, int len, T* param),
+            T* param, const char* format, Targs... Fargs)
+    {
+        return cellular_command((_CALLBACKPTR_MDM)cb, (void*)param, 10000, format, Fargs...);
+    }
+
+    template<typename T, typename... Targs>
+    inline int command(int (*cb)(int type, const char* buf, int len, T* param),
+            T* param, system_tick_t timeout_ms, const char* format, Targs... Fargs)
+    {
+        return cellular_command((_CALLBACKPTR_MDM)cb, (void*)param, timeout_ms, format, Fargs...);
+    }
+
+    IPAddress resolve(const char* name)
+    {
+        HAL_IPAddress ip;
+        return (inet_gethostbyname(name, strlen(name), &ip, *this, NULL)<0) ?
+                IPAddress(uint32_t(0)) : IPAddress(ip);
     }
 };
 

@@ -28,6 +28,20 @@
 #include "core_hal.h"
 #include "spark_macros.h"
 
+static void querySpiInfo(HAL_SPI_Interface spi, hal_spi_info_t* info)
+{
+  memset(info, 0, sizeof(hal_spi_info_t));
+  info->version = HAL_SPI_INFO_VERSION_1;
+  HAL_SPI_Info(spi, info, nullptr);
+}
+
+static SPISettings spiSettingsFromSpiInfo(hal_spi_info_t* info)
+{
+  if (!info->enabled || info->default_settings)
+    return SPISettings();
+  return SPISettings(info->clock, info->bit_order, info->data_mode);
+}
+
 SPIClass::SPIClass(HAL_SPI_Interface spi)
 {
   _spi = spi;
@@ -51,8 +65,20 @@ void SPIClass::begin(uint16_t ss_pin)
   HAL_SPI_Begin(_spi, ss_pin);
 }
 
+void SPIClass::begin(SPI_Mode mode, uint16_t ss_pin)
+{
+  if (ss_pin >= TOTAL_PINS)
+  {
+    return;
+  }
+
+  HAL_SPI_Begin_Ext(_spi, mode, ss_pin, NULL);
+}
+
 void SPIClass::end()
 {
+  trylock();
+  unlock();
   HAL_SPI_End(_spi);
 }
 
@@ -65,6 +91,44 @@ void SPIClass::setDataMode(uint8_t mode)
 {
   HAL_SPI_Set_Data_Mode(_spi, mode);
 }
+
+int32_t SPIClass::beginTransaction()
+{
+  lock();
+  return 0;
+}
+
+int32_t SPIClass::beginTransaction(const SPISettings& settings)
+{
+  lock();
+  // Get Current SPISettings
+  hal_spi_info_t info;
+  querySpiInfo(_spi, &info);
+  SPISettings current = spiSettingsFromSpiInfo(&info);
+  // If they differ, reconfigure SPI peripheral
+  if (settings != current)
+  {
+    if (!settings.default_) {
+      uint8_t divisor = 0;
+      unsigned int clock;
+      computeClockDivider((unsigned int)info.system_clock, settings.clock_, divisor, clock);
+
+      if (!(current <= settings && clock == current.clock_)) {
+        HAL_SPI_Set_Settings(_spi, 0, divisor, settings.bitOrder_, settings.dataMode_, nullptr);
+      }
+    } else {
+      HAL_SPI_Set_Settings(_spi, 1, 0, 0, 0, nullptr);
+    }
+  }
+
+  return 0;
+}
+
+void SPIClass::endTransaction()
+{
+  unlock();
+}
+
 
 void SPIClass::setClockDividerReference(unsigned value, unsigned scale)
 {
@@ -131,9 +195,7 @@ unsigned SPIClass::setClockSpeed(unsigned value, unsigned value_scale)
     // actual speed is the system clock divided by some scalar
     unsigned targetSpeed = value*value_scale;
     hal_spi_info_t info;
-    memset(&info, 0, sizeof(info));
-    info.size = sizeof(info);
-    HAL_SPI_Info(_spi, &info, NULL);
+    querySpiInfo(_spi, &info);
     uint8_t rate;
     unsigned clock;
     computeClockDivider(info.system_clock, targetSpeed, rate, clock);
@@ -149,6 +211,12 @@ byte SPIClass::transfer(byte _data)
 void SPIClass::transfer(void* tx_buffer, void* rx_buffer, size_t length, wiring_spi_dma_transfercomplete_callback_t user_callback)
 {
   HAL_SPI_DMA_Transfer(_spi, tx_buffer, rx_buffer, length, user_callback);
+  if (user_callback == NULL) {
+    HAL_SPI_TransferStatus st;
+    do {
+      HAL_SPI_DMA_Transfer_Status(_spi, &st);
+    } while(st.transfer_ongoing);
+  }
 }
 
 void SPIClass::attachInterrupt()
@@ -164,4 +232,19 @@ void SPIClass::detachInterrupt()
 bool SPIClass::isEnabled()
 {
   return HAL_SPI_Is_Enabled(_spi);
+}
+
+void SPIClass::onSelect(wiring_spi_select_callback_t user_callback)
+{
+  HAL_SPI_Set_Callback_On_Select(_spi, user_callback, NULL);
+}
+
+void SPIClass::transferCancel()
+{
+  HAL_SPI_DMA_Transfer_Cancel(_spi);
+}
+
+int32_t SPIClass::available()
+{
+  return HAL_SPI_DMA_Transfer_Status(_spi, NULL);
 }

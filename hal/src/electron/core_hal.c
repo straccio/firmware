@@ -45,17 +45,6 @@ extern char link_interrupt_vectors_location;
 extern char link_ram_interrupt_vectors_location;
 extern char link_ram_interrupt_vectors_location_end;
 
-/* USB Interrupt Handlers from usb_hal.c */
-#ifdef USE_USB_OTG_FS
-    extern void OTG_FS_WKUP_irq(void);
-    extern void OTG_FS_irq(void);
-#elif defined USE_USB_OTG_HS
-    extern void OTG_HS_EP1_OUT_irq(void);
-    extern void OTG_HS_EP1_IN_irq(void);
-    extern void OTG_HS_WKUP_irq(void);
-    extern void OTG_HS_irq(void);
-#endif
-
 #if 0
 IDX[x] = added IRQ handler
 00 [ ] _estack
@@ -88,16 +77,16 @@ IDX[x] = added IRQ handler
 26 [x] EXTI4_IRQHandler                  // EXTI Line4
 27 [ ] DMA1_Stream0_IRQHandler           // DMA1 Stream 0
 28 [ ] DMA1_Stream1_IRQHandler           // DMA1 Stream 1
-29 [ ] DMA1_Stream2_IRQHandler           // DMA1 Stream 2
+29 [x] DMA1_Stream2_IRQHandler           // DMA1 Stream 2
 30 [ ] DMA1_Stream3_IRQHandler           // DMA1 Stream 3
 31 [ ] DMA1_Stream4_IRQHandler           // DMA1 Stream 4
 32 [ ] DMA1_Stream5_IRQHandler           // DMA1 Stream 5
 33 [ ] DMA1_Stream6_IRQHandler           // DMA1 Stream 6
 34 [x] ADC_IRQHandler                    // ADC1, ADC2 and ADC3s
-35 [ ] CAN1_TX_IRQHandler                // CAN1 TX
-36 [ ] CAN1_RX0_IRQHandler               // CAN1 RX0
-37 [ ] CAN1_RX1_IRQHandler               // CAN1 RX1
-38 [ ] CAN1_SCE_IRQHandler               // CAN1 SCE
+35 [x] CAN1_TX_IRQHandler                // CAN1 TX
+36 [x] CAN1_RX0_IRQHandler               // CAN1 RX0
+37 [x] CAN1_RX1_IRQHandler               // CAN1 RX1
+38 [x] CAN1_SCE_IRQHandler               // CAN1 SCE
 39 [x] EXTI9_5_IRQHandler                // External Line[9:5]s
 40 [x] TIM1_BRK_TIM9_IRQHandler          // TIM1 Break and TIM9
 41 [x] TIM1_UP_TIM10_IRQHandler          // TIM1 Update and TIM10
@@ -133,7 +122,7 @@ IDX[x] = added IRQ handler
 71 [x] TIM7_IRQHandler                   // TIM7
 72 [ ] DMA2_Stream0_IRQHandler           // DMA2 Stream 0
 73 [ ] DMA2_Stream1_IRQHandler           // DMA2 Stream 1
-74 [ ] DMA2_Stream2_IRQHandler           // DMA2 Stream 2
+74 [x] DMA2_Stream2_IRQHandler           // DMA2 Stream 2
 75 [ ] DMA2_Stream3_IRQHandler           // DMA2 Stream 3
 76 [ ] DMA2_Stream4_IRQHandler           // DMA2 Stream 4
 77 [ ] ETH_IRQHandler                    // Ethernet
@@ -173,7 +162,12 @@ const unsigned EXTI1_IRQHandler_Idx                 = 23;
 const unsigned EXTI2_IRQHandler_Idx                 = 24;
 const unsigned EXTI3_IRQHandler_Idx                 = 25;
 const unsigned EXTI4_IRQHandler_Idx                 = 26;
+const unsigned DMA1_Stream2_IRQHandler_Idx          = 29;
 const unsigned ADC_IRQHandler_Idx                   = 34;
+const unsigned CAN1_TX_IRQHandler_Idx               = 35;
+const unsigned CAN1_RX0_IRQHandler_Idx              = 36;
+const unsigned CAN1_RX1_IRQHandler_Idx              = 37;
+const unsigned CAN1_SCE_IRQHandler_Idx              = 38;
 const unsigned EXTI9_5_IRQHandler_Idx               = 39;
 const unsigned TIM1_BRK_TIM9_IRQHandler_Idx         = 40;
 const unsigned TIM1_UP_TIM10_IRQHandler_Idx         = 41;
@@ -200,6 +194,7 @@ const unsigned UART4_IRQHandler_Idx                 = 68;
 const unsigned UART5_IRQHandler_Idx                 = 69;
 const unsigned TIM6_DAC_IRQHandler_Idx              = 70;
 const unsigned TIM7_IRQHandler_Idx                  = 71;
+const unsigned DMA2_Stream2_IRQHandler_Idx          = 74;
 const unsigned CAN2_TX_IRQHandler_Idx               = 79;
 const unsigned CAN2_RX0_IRQHandler_Idx              = 80;
 const unsigned CAN2_RX1_IRQHandler_Idx              = 81;
@@ -250,6 +245,10 @@ void HAL_Core_Setup_override_interrupts(void)
     isrs[EXTI3_IRQHandler_Idx]              = (uint32_t)EXTI3_IRQHandler;
     isrs[EXTI4_IRQHandler_Idx]              = (uint32_t)EXTI4_IRQHandler;
     isrs[ADC_IRQHandler_Idx]                = (uint32_t)ADC_irq;
+    isrs[CAN1_TX_IRQHandler_Idx]            = (uint32_t)CAN1_TX_irq;
+    isrs[CAN1_RX0_IRQHandler_Idx]           = (uint32_t)CAN1_RX0_irq;
+    isrs[CAN1_RX1_IRQHandler_Idx]           = (uint32_t)CAN1_RX1_irq;
+    isrs[CAN1_SCE_IRQHandler_Idx]           = (uint32_t)CAN1_SCE_irq;
     isrs[EXTI9_5_IRQHandler_Idx]            = (uint32_t)EXTI9_5_IRQHandler;
     isrs[TIM1_BRK_TIM9_IRQHandler_Idx]      = (uint32_t)TIM1_BRK_TIM9_irq;
     isrs[TIM1_UP_TIM10_IRQHandler_Idx]      = (uint32_t)TIM1_UP_TIM10_irq;
@@ -272,6 +271,7 @@ void HAL_Core_Setup_override_interrupts(void)
     isrs[UART4_IRQHandler_Idx]              = (uint32_t)HAL_USART4_Handler;
     isrs[UART5_IRQHandler_Idx]              = (uint32_t)HAL_USART5_Handler;
     isrs[TIM6_DAC_IRQHandler_Idx]           = (uint32_t)TIM6_DAC_irq;
+    isrs[DMA2_Stream2_IRQHandler_Idx]       = (uint32_t)DMA2_Stream2_irq_override;
     isrs[TIM7_IRQHandler_Idx]               = (uint32_t)TIM7_override;  // WICED uses this for a JTAG watchdog handler
     isrs[CAN2_TX_IRQHandler_Idx]            = (uint32_t)CAN2_TX_irq;
     isrs[CAN2_RX0_IRQHandler_Idx]           = (uint32_t)CAN2_RX0_irq;
@@ -292,6 +292,8 @@ void HAL_Core_Setup_override_interrupts(void)
     isrs[I2C3_ER_IRQHandler_Idx]            = (uint32_t)I2C3_ER_irq;
     isrs[DMA1_Stream7_IRQHandler_Idx]       = (uint32_t)DMA1_Stream7_irq;
     isrs[DMA2_Stream5_IRQHandler_Idx]       = (uint32_t)DMA2_Stream5_irq;
+    isrs[DMA1_Stream2_IRQHandler_Idx]       = (uint32_t)DMA1_Stream2_irq;
+
     isrs[RTC_Alarm_IRQHandler_Idx]          = (uint32_t)RTC_Alarm_irq;
     SCB->VTOR = (unsigned long)isrs;
 }
@@ -321,13 +323,18 @@ void __malloc_unlock(void* ptr)
         xSemaphoreGiveRecursive(malloc_mutex);
 }
 
+void application_task_start(void* arg)
+{
+	application_start();
+}
+
 /**
  * Called from startup_stm32f2xx.s at boot, main entry point.
  */
 int main(void)
 {
     init_malloc_mutex();
-    xTaskCreate( application_start, "app_thread", APPLICATION_STACK_SIZE/sizeof( portSTACK_TYPE ), NULL, 2, &app_thread_handle);
+    xTaskCreate( application_task_start, "app_thread", APPLICATION_STACK_SIZE/sizeof( portSTACK_TYPE ), NULL, 2, &app_thread_handle);
 
     vTaskStartScheduler();
 
@@ -338,10 +345,10 @@ int main(void)
 }
 
 /**
- * Called at the beginning of app_setup_and_loop() from main.cpp to
- * pre-initialize any low level hardware before the main loop runs.
+ * Called by HAL_Core_Init() to pre-initialize any low level hardware before
+ * the main loop runs.
  */
-void HAL_Core_Init(void)
+void HAL_Core_Init_finalize(void)
 {
 }
 
@@ -370,6 +377,8 @@ void HAL_Core_Setup_finalize(void)
 {
     uint32_t* isrs = (uint32_t*)&link_ram_interrupt_vectors_location;
     isrs[SysTick_Handler_Idx] = (uint32_t)SysTickChain;
+    // retained memory is critical for efficient data use on the electron
+    HAL_Feature_Set(FEATURE_RETAINED_MEMORY, ENABLE);
 }
 
 /******************************************************************************/
@@ -501,7 +510,7 @@ void EXTI9_5_IRQHandler(void)
 
     if (EXTI_GetITStatus(EXTI_Line7) != RESET)
     {
-        Handle_Mode_Button_EXTI_irq();
+        Handle_Mode_Button_EXTI_irq(BUTTON1);
     }
 
     if (EXTI_GetITStatus(EXTI_Line8) != RESET)
@@ -594,15 +603,11 @@ void FLASH_IRQHandler(void)         {__ASM("bkpt 0");}
 void RCC_IRQHandler(void)           {__ASM("bkpt 0");}
 void DMA1_Stream0_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA1_Stream1_IRQHandler(void)  {__ASM("bkpt 0");}
-void DMA1_Stream2_IRQHandler(void)  {__ASM("bkpt 0");}
+//void DMA1_Stream2_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA1_Stream3_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA1_Stream4_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA1_Stream5_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA1_Stream6_IRQHandler(void)  {__ASM("bkpt 0");}
-void CAN1_TX_IRQHandler(void)       {__ASM("bkpt 0");}
-void CAN1_RX0_IRQHandler(void)      {__ASM("bkpt 0");}
-void CAN1_RX1_IRQHandler(void)      {__ASM("bkpt 0");}
-void CAN1_SCE_IRQHandler(void)      {__ASM("bkpt 0");}
 void I2C2_EV_IRQHandler(void)       {__ASM("bkpt 0");}
 void I2C2_ER_IRQHandler(void)       {__ASM("bkpt 0");}
 void SPI1_IRQHandler(void)          {__ASM("bkpt 0");}
@@ -613,7 +618,7 @@ void SDIO_IRQHandler(void)          {__ASM("bkpt 0");}
 void SPI3_IRQHandler(void)          {__ASM("bkpt 0");}
 void DMA2_Stream0_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA2_Stream1_IRQHandler(void)  {__ASM("bkpt 0");}
-void DMA2_Stream2_IRQHandler(void)  {__ASM("bkpt 0");}
+//void DMA2_Stream2_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA2_Stream3_IRQHandler(void)  {__ASM("bkpt 0");}
 void DMA2_Stream4_IRQHandler(void)  {__ASM("bkpt 0");}
 void ETH_IRQHandler(void)           {__ASM("bkpt 0");}

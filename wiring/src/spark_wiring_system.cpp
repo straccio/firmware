@@ -4,9 +4,14 @@
 #include "rgbled.h"
 #include "spark_wiring_wifi.h"
 #include "spark_wiring_cloud.h"
+#include "spark_wiring_logging.h"
 #include "system_task.h"
+#include "system_control.h"
 #include "system_network.h"
 
+#if Wiring_LogConfig
+extern bool(*log_process_config_request_callback)(char*, size_t, size_t, size_t*, DataFormat);
+#endif
 
 SystemClass System;
 
@@ -27,17 +32,22 @@ void SystemClass::dfu(bool persist)
 
 void SystemClass::reset(void)
 {
-    HAL_Core_System_Reset();
+    reset(0);
 }
 
-void SystemClass::sleep(Spark_Sleep_TypeDef sleepMode, long seconds)
+void SystemClass::reset(uint32_t data)
 {
-    system_sleep(sleepMode, seconds, 0, NULL);
+    HAL_Core_System_Reset_Ex(RESET_REASON_USER, data, nullptr);
 }
 
-void SystemClass::sleep(uint16_t wakeUpPin, InterruptMode edgeTriggerMode, long seconds)
+void SystemClass::sleep(Spark_Sleep_TypeDef sleepMode, long seconds, SleepNetworkFlag network)
 {
-    system_sleep_pin(wakeUpPin, edgeTriggerMode, seconds, 0, NULL);
+    system_sleep(sleepMode, seconds, network.flag(), NULL);
+}
+
+void SystemClass::sleep(uint16_t wakeUpPin, InterruptMode edgeTriggerMode, long seconds, SleepNetworkFlag network)
+{
+    system_sleep_pin(wakeUpPin, edgeTriggerMode, seconds, network.flag(), NULL);
 }
 
 uint32_t SystemClass::freeMemory()
@@ -48,3 +58,10 @@ uint32_t SystemClass::freeMemory()
     HAL_Core_Runtime_Info(&info, NULL);
     return info.freeheap;
 }
+
+#if Wiring_LogConfig
+bool SystemClass::enableFeature(LoggingFeature) {
+    log_process_config_request_callback = spark::logProcessConfigRequest;
+    return true;
+}
+#endif

@@ -26,7 +26,7 @@
 #include "application.h"
 #include "unit-test/unit-test.h"
 
-test(GPIO_PinModeSetResultsInCorrectMode) {
+test(GPIO_01_PinModeSetResultsInCorrectMode) {
     PinMode mode[] = {
             OUTPUT,
             INPUT,
@@ -52,7 +52,7 @@ test(GPIO_PinModeSetResultsInCorrectMode) {
     //To Do : Add test for remaining pins if required
 }
 
-test(GPIO_NoDigitalWriteWhenPinModeIsNotSetToOutput) {
+test(GPIO_02_NoDigitalWriteWhenPinModeIsNotSetToOutput) {
     pin_t pin = D0;//pin under test
     // when
     // pin set to INPUT_PULLUP mode, to keep pin from floating and test failing
@@ -63,7 +63,7 @@ test(GPIO_NoDigitalWriteWhenPinModeIsNotSetToOutput) {
     //To Do : Add test for remaining pins if required
 }
 
-test(GPIO_NoDigitalWriteWhenPinSelectedIsOutOfRange) {
+test(GPIO_03_NoDigitalWriteWhenPinSelectedIsOutOfRange) {
     pin_t pin = TOTAL_PINS+1;//pin under test (not a valid user pin)
     // when
     pinMode(pin, OUTPUT);
@@ -73,7 +73,7 @@ test(GPIO_NoDigitalWriteWhenPinSelectedIsOutOfRange) {
     //To Do : Add test for remaining pins if required
 }
 
-test(GPIO_DigitalWriteOnPinResultsInCorrectDigitalRead) {
+test(GPIO_04_DigitalWriteOnPinResultsInCorrectDigitalRead) {
     pin_t pin = D0;//pin under test
     // when
     pinMode(pin, OUTPUT);
@@ -90,41 +90,46 @@ test(GPIO_DigitalWriteOnPinResultsInCorrectDigitalRead) {
     //To Do : Add test for remaining pins if required
 }
 
-test(GPIO_pulseIn_Measures1000usHIGHWithin5Percent) {
+test(GPIO_05_pulseIn_Measures1000usHIGHWithin5Percent) {
     pin_t pin = D1; // pin under test
-    // when
-    pinMode(pin, OUTPUT);
-    analogWrite(pin, 128); // 50% Duty Cycle at 500Hz = 1000us HIGH, 1000us LOW.
     uint32_t avgPulseHigh = 0;
-    for(int i=0;i<100;i++) {
-        avgPulseHigh += pulseIn(pin, HIGH);
+    // when
+    SINGLE_THREADED_BLOCK() {
+        pinMode(pin, OUTPUT);
+        analogWrite(pin, 128); // 50% Duty Cycle at 500Hz = 1000us HIGH, 1000us LOW.
+        for(int i=0;i<100;i++) {
+            avgPulseHigh += pulseIn(pin, HIGH);
+        }
+        avgPulseHigh /= 100;
+        analogWrite(pin, 0);
     }
-    avgPulseHigh /= 100;
-    analogWrite(pin, 0);
     // then
     // avgPulseHigh should equal 1000 +/- 5%
     assertMoreOrEqual(avgPulseHigh, 950);
     assertLessOrEqual(avgPulseHigh, 1050);
 }
 
-test(GPIO_pulseIn_Measures1000usLOWWithin5Percent) {
+test(GPIO_06_pulseIn_Measures1000usLOWWithin5Percent) {
     pin_t pin = D1; // pin under test
-    // when
-    pinMode(pin, OUTPUT);
-    analogWrite(pin, 128); // 50% Duty Cycle at 500Hz = 1000us HIGH, 1000us LOW.
+
     uint32_t avgPulseLow = 0;
-    for(int i=0;i<100;i++) {
-        avgPulseLow += pulseIn(pin, LOW);
+    // when
+    SINGLE_THREADED_BLOCK() {
+        pinMode(pin, OUTPUT);
+        analogWrite(pin, 128); // 50% Duty Cycle at 500Hz = 1000us HIGH, 1000us LOW.
+        for(int i=0;i<100;i++) {
+            avgPulseLow += pulseIn(pin, LOW);
+        }
+        avgPulseLow /= 100;
+        analogWrite(pin, 0);
     }
-    avgPulseLow /= 100;
-    analogWrite(pin, 0);
     // then
     // avgPulseHigh should equal 1000 +/- 5%
     assertMoreOrEqual(avgPulseLow, 950);
     assertLessOrEqual(avgPulseLow, 1050);
 }
 
-test(GPIO_pulseIn_TimesOutAfter3Seconds) {
+test(GPIO_07_pulseIn_TimesOutAfter3Seconds) {
     pin_t pin = D1; // pin under test
     // when
     pinMode(pin, OUTPUT);
@@ -142,4 +147,29 @@ test(GPIO_pulseIn_TimesOutAfter3Seconds) {
     // timeout should equal 3000 +/- 5%
     assertMoreOrEqual(millis()-startTime, 2850);
     assertLessOrEqual(millis()-startTime, 3150);
+}
+
+test(GPIO_08_AnalogReadWorksMixedWithDigitalRead) {
+    pin_t pin = A0;
+
+    // when
+    pinMode(pin, INPUT_PULLUP);
+    // then
+    assertEqual(HAL_Get_Pin_Mode(pin), INPUT_PULLUP);
+
+    // 2 analogReads
+    analogRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), AN_INPUT);
+    analogRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), AN_INPUT);
+    // 2 digitalReads
+    digitalRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), INPUT_PULLUP);
+    digitalRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), INPUT_PULLUP);
+    // 2 analogReads again
+    analogRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), AN_INPUT);
+    analogRead(pin);
+    assertEqual(HAL_Get_Pin_Mode(pin), AN_INPUT);
 }

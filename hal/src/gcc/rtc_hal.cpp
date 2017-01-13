@@ -1,15 +1,16 @@
 
 #include "rtc_hal.h"
 
-#include <boost/date_time/posix_time/posix_time.hpp>
 
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/version.hpp>
 
 
 void HAL_RTC_Configuration(void)
 {
 }
 
-#if 0
+#if BOOST_VERSION < 105800
 time_t to_time_t(boost::posix_time::ptime t)
 {
     using namespace boost::posix_time;
@@ -34,6 +35,11 @@ void HAL_RTC_Set_UnixAlarm(time_t value)
 {
 }
 
+void HAL_RTC_Cancel_UnixAlarm(void)
+{
+}
 
-
-
+uint8_t HAL_RTC_Time_Is_Valid(void* reserved)
+{
+    return 1;
+}

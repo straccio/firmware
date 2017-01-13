@@ -34,12 +34,13 @@
 #include "config.h"
 #include "spark_macros.h"
 #include "debug.h"
-#include "spark_wiring_arduino.h"
 #include "spark_wiring_constants.h"
 #include "spark_wiring_stream.h"
 #include "spark_wiring_printable.h"
 #include "spark_wiring_ipaddress.h"
+#include "spark_wiring_cellular_printable.h"
 #include "spark_wiring_wifi.h"
+#include "spark_wiring_cellular.h"
 #include "spark_wiring_character.h"
 #include "spark_wiring_random.h"
 #include "spark_wiring_system.h"
@@ -69,7 +70,6 @@ PinMode getPinMode(uint16_t pin);
 bool pinAvailable(uint16_t pin);
 void digitalWrite(uint16_t pin, uint8_t value);
 int32_t digitalRead(uint16_t pin);
-void analogWrite(uint16_t pin, uint16_t value);
 
 
 long map(long value, long fromStart, long fromEnd, long toStart, long toEnd);
@@ -84,5 +84,12 @@ uint32_t pulseIn(pin_t pin, uint16_t value);
 #ifdef __cplusplus
 }
 #endif
+
+void analogWrite(pin_t pin, uint32_t value);
+void analogWrite(pin_t pin, uint32_t value, uint32_t pwm_frequency);
+uint8_t analogWriteResolution(pin_t pin, uint8_t value);
+uint8_t analogWriteResolution(pin_t pin);
+uint32_t analogWriteMaxFrequency(pin_t pin);
+void setDACBufferred(pin_t pin, uint8_t state);
 
 #endif /* SPARK_WIRING_H_ */

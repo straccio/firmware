@@ -63,6 +63,17 @@ int32_t USB_USART_Receive_Data(uint8_t peek)
 }
 
 /*******************************************************************************
+ * Function Name  : USB_USART_Available_Data_For_Write.
+ * Description    : Return the length of available space in TX buffer
+ * Input          : None.
+ * Return         : Length.
+ *******************************************************************************/
+int32_t USB_USART_Available_Data_For_Write(void)
+{
+  return 0;
+}
+
+/*******************************************************************************
  * Function Name  : USB_USART_Send_Data.
  * Description    : Send Data from USB_USART to USB Host.
  * Input          : Data.
@@ -72,6 +83,81 @@ void USB_USART_Send_Data(uint8_t Data)
 {
 
 }
+
+/*******************************************************************************
+ * Function Name  : USB_USART_Flush_Data.
+ * Description    : Flushes TX buffer
+ * Input          : None.
+ * Return         : None.
+ *******************************************************************************/
+void USB_USART_Flush_Data(void)
+{
+
+}
+
+void HAL_USB_Init(void)
+{
+}
+
+void HAL_USB_Attach()
+{
+}
+
+void HAL_USB_Detach()
+{
+}
+
+void HAL_USB_USART_Init(HAL_USB_USART_Serial serial, HAL_USB_USART_Config* config)
+{
+}
+
+void HAL_USB_USART_Begin(HAL_USB_USART_Serial serial, uint32_t baud, void *reserved)
+{
+}
+
+void HAL_USB_USART_End(HAL_USB_USART_Serial serial)
+{
+}
+
+unsigned int HAL_USB_USART_Baud_Rate(HAL_USB_USART_Serial serial)
+{
+  return 0;
+}
+
+int32_t HAL_USB_USART_Available_Data(HAL_USB_USART_Serial serial)
+{
+  return -1;
+}
+
+int32_t HAL_USB_USART_Available_Data_For_Write(HAL_USB_USART_Serial serial)
+{
+  return -1;
+}
+
+int32_t HAL_USB_USART_Receive_Data(HAL_USB_USART_Serial serial, uint8_t peek)
+{
+  return -1;
+}
+
+int32_t HAL_USB_USART_Send_Data(HAL_USB_USART_Serial serial, uint8_t data)
+{
+  return -1;
+}
+
+void HAL_USB_USART_Flush_Data(HAL_USB_USART_Serial serial)
+{
+}
+
+bool HAL_USB_USART_Is_Enabled(HAL_USB_USART_Serial serial)
+{
+  return true;
+}
+
+bool HAL_USB_USART_Is_Connected(HAL_USB_USART_Serial serial)
+{
+  return true;
+}
+
 #endif
 
 #ifdef USB_HID_ENABLE
@@ -82,7 +168,7 @@ void USB_USART_Send_Data(uint8_t Data)
  * Output        : None.
  * Return value  : None.
  *******************************************************************************/
-void USB_HID_Send_Report(void *pHIDReport, size_t reportSize)
+void USB_HID_Send_Report(void *pHIDReport, uint16_t reportSize)
 {
 }
 #endif

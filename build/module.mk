@@ -5,10 +5,6 @@ include $(COMMON_BUILD)/macros.mk
 
 SOURCE_PATH ?= $(MODULE_PATH)
 
-# Recursive wildcard function - finds matching files in a directory tree
-target_files = $(patsubst $(SOURCE_PATH)/%,%,$(call rwildcard,$(SOURCE_PATH)/$1,$2))
-here_files = $(call wildcard,$(SOURCE_PATH)/$1$2)
-
 # import this module's symbols
 include $(MODULE_PATH)/import.mk
 
@@ -33,19 +29,62 @@ CFLAGS += $(addprefix -D,$(GLOBAL_DEFINES))
 export GLOBAL_DEFINES
 endif
 
+# _WINSOCK_H prevents select.h from being used which conflicts with CC3000 headers
+CFLAGS += -D_WINSOCK_H
+
+ifneq (,$(NO_GNU_EXTENSIONS))
+# Stick to POSIX-conforming API
+CFLAGS += -D_POSIX_C_SOURCE=200809
+else
+# Enable GNU extensions
+CFLAGS += -D_GNU_SOURCE
+endif
+
+# Global category name for logging
+ifneq (,$(LOG_MODULE_CATEGORY))
+CFLAGS += -DLOG_MODULE_CATEGORY="\"$(LOG_MODULE_CATEGORY)\""
+endif
+
+# Adds the sources from the specified library directories
+# v1 libraries include all sources
+LIBCPPSRC += $(call target_files_dirs,$(MODULE_LIBSV1),,*.cpp)
+LIBCSRC += $(call target_files_dirs,$(MODULE_LIBSV1),,*.c)
+
+# v2 libraries only include sources in the "src" dir
+LIBCPPSRC += $(call target_files_dirs,$(MODULE_LIBSV2)/,src/,*.cpp)
+LIBCSRC += $(call target_files_dirs,$(MODULE_LIBSV2)/,src/,*.c)
+
+
+CPPSRC += $(LIBCPPSRC)
+CSRC += $(LIBCSRC)
+
+# add all module libraries as include directories
+INCLUDE_DIRS += $(MODULE_LIBSV1)
+
+# v2 libraries contain their sources under a "src" folder
+INCLUDE_DIRS += $(addsuffix /src,$(MODULE_LIBSV2))
+
+# $(info cppsrc $(CPPSRC))
+# $(info csrc $(CSRC))
+
 
 # Collect all object and dep files
 ALLOBJ += $(addprefix $(BUILD_PATH)/, $(CSRC:.c=.o))
 ALLOBJ += $(addprefix $(BUILD_PATH)/, $(CPPSRC:.cpp=.o))
 ALLOBJ += $(addprefix $(BUILD_PATH)/, $(patsubst $(COMMON_BUILD)/arm/%,%,$(ASRC:.S=.o)))
 
+# $(info allobj $(ALLOBJ))
+
 ALLDEPS += $(addprefix $(BUILD_PATH)/, $(CSRC:.c=.o.d))
 ALLDEPS += $(addprefix $(BUILD_PATH)/, $(CPPSRC:.cpp=.o.d))
 ALLDEPS += $(addprefix $(BUILD_PATH)/, $(patsubst $(COMMON_BUILD)/arm/%,%,$(ASRC:.S=.o.d)))
 
+CLOUD_FLASH_URL ?= https://api.spark.io/v1/devices/$(SPARK_CORE_ID)\?access_token=$(SPARK_ACCESS_TOKEN)
 
 # All Target
-all: $(MAKE_DEPENDENCIES) $(TARGET)
+all: $(TARGET) postbuild
+
+build_dependencies: $(MAKE_DEPENDENCIES)
 
 elf: $(TARGET_BASE).elf
 bin: $(TARGET_BASE).bin
@@ -60,6 +99,14 @@ st-flash: $(TARGET_BASE).bin
 	@echo Flashing $< using st-flash to address $(PLATFORM_DFU)
 	st-flash write $< $(PLATFORM_DFU)
 
+ifneq ("$(OPENOCD_HOME)","")
+
+program-openocd: $(TARGET_BASE).bin
+	@echo Flashing $< using openocd to address $(PLATFORM_DFU)
+	$(OPENOCD_HOME)/openocd -f $(OPENOCD_HOME)/tcl/interface/ftdi/particle-ftdi.cfg -f $(OPENOCD_HOME)/tcl/target/stm32f2x.cfg  -c "init; reset halt" -c "flash protect 0 0 11 off" -c "program $< $(PLATFORM_DFU) reset exit"
+
+endif
+
 # Program the core using dfu-util. The core should have been placed
 # in bootloader mode before invoking 'make program-dfu'
 program-dfu: $(TARGET_BASE).dfu
@@ -70,7 +117,7 @@ ifeq ("$(wildcard $(PARTICLE_SERIAL_DEV))","")
 	@echo Serial device PARTICLE_SERIAL_DEV : $(PARTICLE_SERIAL_DEV) not available
 else
 	@echo Entering dfu bootloader mode:
-	stty -f $(PARTICLE_SERIAL_DEV) $(START_DFU_FLASHER_SERIAL_SPEED)
+	$(SERIAL_SWITCHER) $(START_DFU_FLASHER_SERIAL_SPEED) $(PARTICLE_SERIAL_DEV)
 	sleep 1
 endif
 endif
@@ -92,7 +139,7 @@ ifeq ("$(wildcard $(PARTICLE_SERIAL_DEV))","")
 	@echo Serial device PARTICLE_SERIAL_DEV : $(PARTICLE_SERIAL_DEV) not available
 else
 	@echo Entering serial programmer mode:
-	stty -f $(PARTICLE_SERIAL_DEV) $(START_YMODEM_FLASHER_SERIAL_SPEED)
+	$(SERIAL_SWITCHER) $(START_YMODEM_FLASHER_SERIAL_SPEED) $(PARTICLE_SERIAL_DEV)
 	sleep 1
 	@echo Flashing using serial ymodem protocol:
 # Got some issue currently in getting 'sz' working
@@ -171,20 +218,19 @@ endif
 	$(call echo,)
 
 
-$(TARGET_BASE).elf : $(ALLOBJ) $(LIB_DEPS) $(LINKER_DEPS)
+$(TARGET_BASE).elf : build_dependencies $(ALLOBJ) $(LIB_DEPS) $(LINKER_DEPS)
 	$(call echo,'Building target: $@')
 	$(call echo,'Invoking: ARM GCC C++ Linker')
 	$(VERBOSE)$(MKDIR) $(dir $@)
 	$(VERBOSE)$(CPP) $(CFLAGS) $(ALLOBJ) --output $@ $(LDFLAGS)
 	$(call echo,)
 
-$(TARGET_BASE)$(EXECUTABLE_EXTENSION) : $(ALLOBJ) $(LIB_DEPS) $(LINKER_DEPS)
+$(TARGET_BASE)$(EXECUTABLE_EXTENSION) : build_dependencies $(ALLOBJ) $(LIB_DEPS) $(LINKER_DEPS)
 	$(call echo,'Building target: $@')
 	$(call echo,'Invoking: GCC C++ Linker')
 	$(VERBOSE)$(MKDIR) $(dir $@)
 	$(VERBOSE)$(CPP) $(CFLAGS) $(ALLOBJ) --output $@ $(LDFLAGS)
 	$(call echo,)
-
 
 
 # Tool invocations
@@ -195,13 +241,42 @@ $(TARGET_BASE).a : $(ALLOBJ)
 	$(VERBOSE)$(AR) -cr $@ $^
 	$(call echo,)
 
-# C compiler to build .o from .c in $(BUILD_DIR)
-$(BUILD_PATH)/%.o : $(SOURCE_PATH)/%.c
-	$(call echo,'Building file: $<')
+define build_C_file
+	$(call echo,'Building c file: $<')
 	$(call echo,'Invoking: ARM GCC C Compiler')
 	$(VERBOSE)$(MKDIR) $(dir $@)
 	$(VERBOSE)$(CC) $(CFLAGS) $(CONLYFLAGS) -c -o $@ $<
 	$(call echo,)
+endef
+
+define build_CPP_file
+	$(call echo,'Building cpp file: $<')
+	$(call echo,'Invoking: ARM GCC CPP Compiler')
+	$(VERBOSE)$(MKDIR) $(dir $@)
+	$(VERBOSE)$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+	$(call echo,)
+endef
+
+# C compiler to build .o from .c in $(BUILD_DIR)
+$(BUILD_PATH)/%.o : $(SOURCE_PATH)/%.c
+	$(build_C_file)
+
+# CPP compiler to build .o from .cpp in $(BUILD_DIR)
+# Note: Calls standard $(CC) - gcc will invoke g++ as appropriate
+$(BUILD_PATH)/%.o : $(SOURCE_PATH)/%.cpp
+	$(build_CPP_file)
+
+define build_LIB_files
+$(BUILD_PATH)/$(notdir $1)/%.o : $1/%.c
+	$$(build_C_file)
+
+$(BUILD_PATH)/$(notdir $1)/%.o : $1/%.cpp
+	$$(build_CPP_file)
+endef
+
+# define rules for each library
+# only the sources added for each library are built (so for v2 libraries only files under "src" are built.)
+$(foreach lib,$(MODULE_LIBSV1) $(MODULE_LIBSV2),$(eval $(call build_LIB_files,$(lib))))
 
 # Assember to build .o from .S in $(BUILD_DIR)
 $(BUILD_PATH)/%.o : $(COMMON_BUILD)/arm/%.S
@@ -211,14 +286,6 @@ $(BUILD_PATH)/%.o : $(COMMON_BUILD)/arm/%.S
 	$(VERBOSE)$(CC) $(ASFLAGS) -c -o $@ $<
 	$(call echo,)
 
-# CPP compiler to build .o from .cpp in $(BUILD_DIR)
-# Note: Calls standard $(CC) - gcc will invoke g++ as appropriate
-$(BUILD_PATH)/%.o : $(SOURCE_PATH)/%.cpp
-	$(call echo,'Building file: $<')
-	$(call echo,'Invoking: ARM GCC CPP Compiler')
-	$(VERBOSE)$(MKDIR) $(dir $@)
-	$(VERBOSE)$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
-	$(call echo,)
 
 # Other Targets
 clean: clean_deps
@@ -226,7 +293,7 @@ clean: clean_deps
 	$(VERBOSE)$(RMDIR) $(BUILD_PATH)
 	$(call,echo,)
 
-.PHONY: all none elf bin hex size program-dfu program-cloud st-flash program-serial
+.PHONY: all postbuild none elf bin hex size program-dfu program-cloud st-flash program-serial
 .SECONDARY:
 
 include $(COMMON_BUILD)/recurse.mk

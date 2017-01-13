@@ -47,6 +47,8 @@ void HAL_RTC_Configuration(void);
 time_t HAL_RTC_Get_UnixTime(void);
 void HAL_RTC_Set_UnixTime(time_t value);
 void HAL_RTC_Set_UnixAlarm(time_t value);
+void HAL_RTC_Cancel_UnixAlarm(void);
+uint8_t HAL_RTC_Time_Is_Valid(void* reserved);
 
 #ifdef __cplusplus
 }

@@ -28,6 +28,7 @@
 #include "gpio_hal.h"
 #include "pinmap_impl.h"
 #include "stm32f2xx.h"
+#include "service_debug.h"
 #include <stddef.h>
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,26 +65,36 @@ typedef struct exti_channel {
 } exti_channel;
 
 //Array to hold user ISR function pointers
-static exti_channel exti_channels[16];
+static exti_channel exti_channels[16] = {{0}};
+
+typedef struct exti_state {
+    uint32_t imr;
+    uint32_t emr;
+    uint32_t rtsr;
+    uint32_t ftsr;
+} exti_state;
+
+static exti_state exti_saved_state = {0};
 
 /* Extern variables ----------------------------------------------------------*/
 
 /* Private function prototypes -----------------------------------------------*/
 
-void HAL_Interrupts_Attach(uint16_t pin, HAL_InterruptHandler handler, void* data, InterruptMode mode, void* reserved)
+void HAL_Interrupts_Attach(uint16_t pin, HAL_InterruptHandler handler, void* data, InterruptMode mode, HAL_InterruptExtraConfiguration* config)
 {
   uint8_t GPIO_PortSource = 0;    //variable to hold the port number
 
   //EXTI structure to init EXT
-  EXTI_InitTypeDef EXTI_InitStructure;
+  EXTI_InitTypeDef EXTI_InitStructure = {0};
   //NVIC structure to set up NVIC controller
-  NVIC_InitTypeDef NVIC_InitStructure;
+  NVIC_InitTypeDef NVIC_InitStructure = {0};
 
   //Map the Spark pin to the appropriate port and pin on the STM32
   STM32_Pin_Info* PIN_MAP = HAL_Pin_Map();
   GPIO_TypeDef *gpio_port = PIN_MAP[pin].gpio_peripheral;
   uint16_t gpio_pin = PIN_MAP[pin].gpio_pin;
   uint8_t GPIO_PinSource = PIN_MAP[pin].gpio_pin_source;
+
 
   //Clear pending EXTI interrupt flag for the selected pin
   EXTI_ClearITPendingBit(gpio_pin);
@@ -107,8 +118,12 @@ void HAL_Interrupts_Attach(uint16_t pin, HAL_InterruptHandler handler, void* dat
   }
 
   // Register the handler for the user function name
-  exti_channels[GPIO_PinSource].fn = handler;
-  exti_channels[GPIO_PinSource].data = data;
+  if (config && config->version >= HAL_INTERRUPT_EXTRA_CONFIGURATION_VERSION_2 && config->keepHandler) {
+    // keep the old handler
+  } else {
+    exti_channels[GPIO_PinSource].fn = handler;
+    exti_channels[GPIO_PinSource].data = data;
+  }
 
   //Connect EXTI Line to appropriate Pin
   SYSCFG_EXTILineConfig(GPIO_PortSource, GPIO_PinSource);
@@ -146,8 +161,25 @@ void HAL_Interrupts_Attach(uint16_t pin, HAL_InterruptHandler handler, void* dat
   //configure NVIC
   //select NVIC channel to configure
   NVIC_InitStructure.NVIC_IRQChannel = GPIO_IRQn[GPIO_PinSource];
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 14;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  if (config == NULL) {
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 14;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  } else {
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = config->IRQChannelPreemptionPriority;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = config->IRQChannelSubPriority;
+
+    // Keep the same priority
+    if (config->version >= HAL_INTERRUPT_EXTRA_CONFIGURATION_VERSION_2) {
+      if (config->keepPriority) {
+        uint32_t priorityGroup = NVIC_GetPriorityGrouping();
+        uint32_t priority = NVIC_GetPriority(NVIC_InitStructure.NVIC_IRQChannel);
+        uint32_t p, sp;
+        NVIC_DecodePriority(priority, priorityGroup, &p, &sp);
+        NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = p;
+        NVIC_InitStructure.NVIC_IRQChannelSubPriority = sp;
+      }
+    }
+  }
   //enable IRQ channel
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   //update NVIC registers
@@ -156,16 +188,29 @@ void HAL_Interrupts_Attach(uint16_t pin, HAL_InterruptHandler handler, void* dat
 
 void HAL_Interrupts_Detach(uint16_t pin)
 {
+  HAL_Interrupts_Detach_Ext(pin, 0, NULL);
+}
+
+
+void HAL_Interrupts_Detach_Ext(uint16_t pin, uint8_t keepHandler, void* reserved)
+{
   //Map the Spark Core pin to the appropriate pin on the STM32
   STM32_Pin_Info* PIN_MAP = HAL_Pin_Map();
   uint16_t gpio_pin = PIN_MAP[pin].gpio_pin;
   uint8_t GPIO_PinSource = PIN_MAP[pin].gpio_pin_source;
 
   //Clear the pending interrupt flag for that interrupt pin
-  EXTI_ClearITPendingBit(gpio_pin);
+  if (!keepHandler || !exti_channels[GPIO_PinSource].fn)
+    EXTI_ClearITPendingBit(gpio_pin);
+
+  //unregister the user's handler
+  if (!keepHandler) {
+    exti_channels[GPIO_PinSource].fn = NULL;
+    exti_channels[GPIO_PinSource].data = NULL;
+  }
 
   //EXTI structure to init EXT
-  EXTI_InitTypeDef EXTI_InitStructure;
+  EXTI_InitTypeDef EXTI_InitStructure = {0};
 
   //Select the appropriate EXTI line
   EXTI_InitStructure.EXTI_Line = gpio_pin;
@@ -173,10 +218,6 @@ void HAL_Interrupts_Detach(uint16_t pin)
   EXTI_InitStructure.EXTI_LineCmd = DISABLE;
   //send values to registers
   EXTI_Init(&EXTI_InitStructure);
-
-  //unregister the user's handler
-  exti_channels[GPIO_PinSource].fn = NULL;
-  exti_channels[GPIO_PinSource].data = NULL;
 }
 
 void HAL_Interrupts_Enable_All(void)
@@ -206,6 +247,27 @@ void HAL_Interrupts_Disable_All(void)
   NVIC_DisableIRQ(EXTI15_10_IRQn);
 }
 
+void HAL_Interrupts_Suspend(void) {
+  exti_saved_state.imr = EXTI->IMR;
+  exti_saved_state.emr = EXTI->EMR;
+  exti_saved_state.rtsr = EXTI->RTSR;
+  exti_saved_state.ftsr = EXTI->FTSR;
+
+  EXTI_DeInit();
+}
+
+void HAL_Interrupts_Restore(void) {
+  EXTI->IMR = exti_saved_state.imr;
+  EXTI->EMR = exti_saved_state.emr;
+  EXTI->RTSR = exti_saved_state.rtsr;
+  EXTI->FTSR = exti_saved_state.ftsr;
+}
+
+uint32_t HAL_Interrupts_Pin_IRQn(pin_t pin) {
+  STM32_Pin_Info* PIN_MAP = HAL_Pin_Map();
+  return GPIO_IRQn[PIN_MAP[pin].gpio_pin];
+}
+
 /*******************************************************************************
  * Function Name  : HAL_EXTI_Handler (Declared as weak in WICED - platform_gpio.c)
  * Description    : This function is called by any of the interrupt handlers. It
@@ -231,18 +293,3 @@ void HAL_Interrupts_Trigger(uint16_t EXTI_Line, void* reserved)
     userISR_Handle(data);
   }
 }
-
-
-int HAL_disable_irq()
-{
-  int is = __get_PRIMASK();
-  __disable_irq();
-  return is;
-}
-
-void HAL_enable_irq(int is) {
-    if ((is & 1) == 0) {
-        __enable_irq();
-    }
-}
-

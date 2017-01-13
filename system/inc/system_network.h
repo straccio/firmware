@@ -41,6 +41,10 @@ extern "C" {
 #define SPARK_NO_CLOUD 1
 #endif
 
+/**
+ * network_handle_t used to differentiate between two networks
+ * on the same device, e.g. WLAN and AP modes on Photon.
+ */
 typedef network_interface_t    network_handle_t;
 const network_interface_t NIF_DEFAULT = 0;
 
@@ -66,6 +70,8 @@ void network_off(network_handle_t network, uint32_t flags, uint32_t param1, void
  * @param reserved
  */
 void network_listen(network_handle_t network, uint32_t flags, void* reserved);
+void network_set_listen_timeout(network_handle_t network, uint16_t timeout, void* reserved);
+uint16_t network_get_listen_timeout(network_handle_t network, uint32_t flags, void* reserved);
 bool network_listening(network_handle_t network, uint32_t param1, void* reserved);
 
 

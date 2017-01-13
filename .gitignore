@@ -18,14 +18,18 @@
 # Debug folder
 Debug/*
 
-# Release folder
+# Releases folder
 Release/*
+build/releases/*
 
 # build folder
 *.map
 *.lst
 *.d
 *.o
+
+# Unit test build folder
+user/tests/unit/obj/*
 
 # Platform-specific settings
 .settings/*

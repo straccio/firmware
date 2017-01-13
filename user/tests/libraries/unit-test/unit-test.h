@@ -164,6 +164,11 @@ THE SOFTWARE.
 
 #include <stdint.h>
 
+#undef F
+#define F(X) (X)
+
+// Ensure this doesn't ever become an issue!
+#if 0
 #if ARDUINO >= 100 && ARDUINO < 103
 #undef F
 #undef PSTR
@@ -189,6 +194,7 @@ THE SOFTWARE.
 #define memcpy_P(a, b, c) memcpy(a, b, c)
 #define strlen_P(a) strlen(a)
 #endif
+#endif // Ensure this doesn't ever become an issue!
 
 /** \brief This is defined to manage the API transition to 2.X */
 #define ARDUINO_UNIT_MAJOR_VERSION 2
@@ -594,7 +600,7 @@ class Test
 
   This should be done inside your setup() function.
   */
-  static void include(const char *pattern);
+  static unsigned include(const char *pattern);
 
   /**
 exclude (skip) currently included tests that match some
@@ -604,7 +610,22 @@ wildcard (*) pattern like,
 
 This should be done inside your setup() function.
   */
-static void exclude(const char *pattern);
+static unsigned exclude(const char *pattern);
+
+
+/**
+ * invoke a lambda for all tests
+ */
+template <typename T> static void for_each(T& t) {
+	  for (Test *p = root; p != nullptr; p=p->next) {
+		  t(*p);
+	  }
+}
+
+bool is_enabled() { return this->state==UNSETUP; }
+
+TestString get_name() const { return name; }
+
 
 /**
 

@@ -20,25 +20,22 @@
 
 
 #include "spark_wiring_rgb.h"
+#include "core_hal.h"
 #include "rgbled.h"
-
-bool RGBClass::_control = false;
 
 bool RGBClass::controlled(void)
 {
-    return _control;
+    return LED_RGB_IsOverRidden();
 }
 
 void RGBClass::control(bool override)
 {
-    if(override == _control)
+    if(override == controlled())
             return;
     else if (override)
             LED_Signaling_Start();
     else
             LED_Signaling_Stop();
-
-    _control = override;
 }
 
 void RGBClass::color(uint32_t rgb) {
@@ -47,7 +44,7 @@ void RGBClass::color(uint32_t rgb) {
 
 void RGBClass::color(int red, int green, int blue)
 {
-    if (true != _control)
+    if (!controlled())
             return;
 
     LED_SetSignalingColor(red << 16 | green << 8 | blue);
@@ -57,7 +54,7 @@ void RGBClass::color(int red, int green, int blue)
 void RGBClass::brightness(uint8_t brightness, bool update)
 {
     LED_SetBrightness(brightness);
-    if (_control && update)
+    if (controlled() && update)
         LED_On(LED_RGB);
 }
 
@@ -69,6 +66,7 @@ void RGBClass::onChange(wiring_rgb_change_handler_t handler) {
     }
   }
   else {
+      // FIXME: This currently causes a memory leak
       LED_RGB_SetChangeHandler(NULL, NULL);
   }
 }
@@ -87,4 +85,18 @@ void RGBClass::call_std_change_handler(void* data, uint8_t r, uint8_t g, uint8_t
 {
     auto fn = (wiring_rgb_change_handler_t*)(data);
     (*fn)(r, g, b);
+}
+
+void RGBClass::mirrorTo(pin_t rpin, pin_t gpin, pin_t bpin, bool invert, bool bootloader)
+{
+  HAL_Core_Led_Mirror_Pin(LED_RED + LED_MIRROR_OFFSET, rpin, (uint32_t)invert, (uint8_t)bootloader, nullptr);
+  HAL_Core_Led_Mirror_Pin(LED_GREEN + LED_MIRROR_OFFSET, gpin, (uint32_t)invert, (uint8_t)bootloader, nullptr);
+  HAL_Core_Led_Mirror_Pin(LED_BLUE + LED_MIRROR_OFFSET, bpin, (uint32_t)invert, (uint8_t)bootloader, nullptr);
+}
+
+void RGBClass::mirrorDisable(bool bootloader)
+{
+  HAL_Core_Led_Mirror_Pin_Disable(LED_RED + LED_MIRROR_OFFSET, (uint8_t)bootloader, nullptr);
+  HAL_Core_Led_Mirror_Pin_Disable(LED_GREEN + LED_MIRROR_OFFSET, (uint8_t)bootloader, nullptr);
+  HAL_Core_Led_Mirror_Pin_Disable(LED_BLUE + LED_MIRROR_OFFSET, (uint8_t)bootloader, nullptr);
 }

@@ -19,12 +19,15 @@
 
 #pragma once
 
+#include <cstddef>
+
 #if PLATFORM_THREADING
 
 #include <functional>
 #include <mutex>
 #include <thread>
 #include <future>
+
 #include "channel.h"
 #include "concurrent_hal.h"
 
@@ -55,11 +58,16 @@ struct ActiveObjectConfiguration
      */
     unsigned put_wait;
 
+    /**
+     * The message capacity of the queue.
+     */
+    uint16_t queue_size;
 
 public:
     ActiveObjectConfiguration(background_task_t task, unsigned take_wait_, unsigned put_wait_,
+    			uint16_t queue_size_,
             size_t stack_size_ =0) : background_task(task), stack_size(stack_size_),
-            take_wait(take_wait_), put_wait(put_wait_) {}
+            take_wait(take_wait_), put_wait(put_wait_), queue_size(queue_size_) {}
 
 };
 
@@ -188,7 +196,7 @@ template<typename T> class Promise : public AbstractPromise<T, Promise<T>>
 public:
 
     Promise(const std::function<T()>& fn_) : super(fn_) {}
-    virtual ~Promise() {}
+    virtual ~Promise() = default;
 
     /**
      * wait for the result
@@ -216,7 +224,7 @@ template<> class Promise<void> : public AbstractPromise<void, Promise<void>>
 public:
 
     Promise(const std::function<void()>& fn_) : super(fn_) {}
-    virtual ~Promise() {}
+    virtual ~Promise() = default;
 
     void get()
     {
@@ -252,11 +260,10 @@ protected:
 
 protected:
 
-    bool process();
 
     // todo - concurrent queue should be a strategy so it's pluggable without requiring inheritance
     virtual bool take(Item& item)=0;
-    virtual void put(Item& item)=0;
+    virtual bool put(Item& item)=0;
 
     void set_thread(std::thread&& thread)
     {
@@ -276,6 +283,8 @@ public:
 
     ActiveObjectBase(const ActiveObjectConfiguration& config) : configuration(config), started(false) {}
 
+    bool process();
+
     bool isCurrentThread() {
         return _thread_id == std::this_thread::get_id();
     }
@@ -291,15 +300,26 @@ public:
     template<typename R> void invoke_async(const std::function<R(void)>& work)
     {
         auto task = new AsyncTask<R>(work);
-        Item message = task;
-        put(message);
-    }
+        if (task)
+        {
+			Item message = task;
+			if (!put(message))
+				delete task;
+        }
+	}
 
     template<typename R> Promise<R>* invoke_future(const std::function<R(void)>& work)
     {
         auto promise = new Promise<R>(work);
-        Item message = promise;
-        put(message);
+        if (promise)
+        {
+			Item message = promise;
+			if (!put(message))
+			{
+				delete promise;
+				promise = nullptr;
+			}
+        }
         return promise;
     }
 
@@ -318,9 +338,10 @@ protected:
         return cpp::select().recv_only(_channel, item).try_once();
     }
 
-    virtual void put(const Item& item) override
+    virtual bool put(const Item& item) override
     {
         _channel.send(item);
+        return true;
     }
 
 
@@ -347,17 +368,17 @@ protected:
 
     virtual bool take(Item& result)
     {
-        return os_queue_take(queue, &result, configuration.take_wait)==0;
+        return !os_queue_take(queue, &result, configuration.take_wait, nullptr);
     }
 
-    virtual void put(Item& item)
+    virtual bool put(Item& item)
     {
-        os_queue_put(queue, &item, configuration.put_wait);
+    		return !os_queue_put(queue, &item, configuration.put_wait, nullptr);
     }
 
-    void createQueue(int queue_size=50)
+    void createQueue()
     {
-        os_queue_create(&queue, sizeof(Item), queue_size);
+        os_queue_create(&queue, sizeof(Item), configuration.queue_size, nullptr);
     }
 
 public:
@@ -417,4 +438,31 @@ public:
 
 
 
-#endif
+#endif // PLATFORM_THREADING
+
+/**
+ * This class implements a queue of asynchronous calls that can be scheduled from an ISR and then
+ * invoked from an event loop running in a regular thread.
+ */
+class ISRTaskQueue {
+public:
+    typedef void(*TaskFunc)(void*);
+
+    explicit ISRTaskQueue(size_t size);
+    ~ISRTaskQueue();
+
+    bool enqueue(TaskFunc func, void* data = nullptr); // Called from an ISR
+    bool process(); // Called from the primary thread
+
+private:
+    struct Task {
+        TaskFunc func;
+        void* data;
+        Task* next;
+    };
+
+    Task* tasks_;
+    Task* availTask_; // Task pool
+    Task* firstTask_; // Task queue
+    Task* lastTask_;
+};

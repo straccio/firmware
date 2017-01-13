@@ -2,27 +2,37 @@
 
 ## Prereqs
 
-GCC 4.9  - `brew isntall gcc49`
-- clone boost and build
-```
-git clone --recursive http://github.com/boostorg/boost.git boost
-export BOOST_ROOT=/path/to/boost-dir/boost
-cd boost
-./bootstrap.sh
-./b2
+### Boost
 
-export DYLD_LIBRARY_PATH=$(BOOST_ROOT)/stage/lib
-```
+On OSX:
 
-
-alternatively (for windows):
 ```
-sudo ./bjam --install --link=static --runtime-link=static --layout=tagged --with-system threading=single architecture=x86
+ brew install gcc49
+ source ./ci/install_boost.sh
+ ./ci/build_boost.sh
+ export DYLD_LIBRARY_PATH=$BOOST_ROOT/stage/lib
 ```
 
-## Building
+On Windows:
+
+- Ensure gcc is in your path (e.g. from MinGW). Tested on version 4.9.3. 
+- Download [boost 1.61.0](http://heanet.dl.sourceforge.net/project/boost/boost/1.61.0/boost_1_61_0.zip) from sourceforge and xtract to a folder.
+- Define `BOOST_ROOT` to point to the folder containing boost, e.g.
 ```
-git checkout develop
+set BOOST_ROOT=c:\dev\boost_1_61_0
+```
+
+Then build the boost libraries
+
+```
+cd %BOOST_ROOT%
+bootstrap.bat gcc
+bjam --install --layout=tagged --with-system --with-program_options --with-random --with-thread toolset=gcc
+```
+
+## Building the Virtual Device
+
+```
 cd main
 make -s PRODUCT_ID=3
 ```
@@ -53,6 +63,17 @@ The virtual device is configured using keys and values.
 | device_id                  | the unique ID for this device, maximum 12 digits      |
 | device_key                 | the file containing the device's private key          |
 | server_key                 | the file containing the cloud public key              |
-|
+| protocol                   | `tcp` or `udp`                                            |
+
+
+## Troubleshooting
+
+### Build
+
+Duplicate sections that are different sizes. 
+- the same templates are linked into different boost libraries, producing different compiler output. This can be due to different compiler flags. Use `-n -a` flags with `bjam` to see the tool invocations and compare flags. 
+
+
+
 
 

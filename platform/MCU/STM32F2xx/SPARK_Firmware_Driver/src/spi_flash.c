@@ -26,6 +26,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "hw_config.h"
 
+/* This was originally optimized for O2 to make sFlash work reliably
+ * without knowing why it worked exactly. It was determined that a delay was needed after the
+ * sFLASH_CS_LOW(); in sFLASH_WriteDisable/sFLASH_WriteEnable, so an asm("mov r2, r2"); was added
+ * to the end of sFLASH_CS_LOW();
+ */
+// #pragma GCC optimize ("O1")
+
 /* SST25 SPI Flash supported commands */
 #define sFLASH_CMD_RDSR                 0x05        /* Read Status Register */
 #define sFLASH_CMD_WRSR                 0x01        /* Write Status Register */
@@ -186,7 +193,7 @@ static void sFLASH_WritePage(const uint8_t* pBuffer, uint32_t WriteAddr, uint32_
  */
 void sFLASH_WriteBuffer(const uint8_t* pBuffer, uint32_t WriteAddr, uint32_t NumByteToWrite)
 {
-    uint8_t NumOfPage = 0, NumOfSingle = 0, Addr = 0, count = 0, temp = 0;
+    uint16_t NumOfPage = 0, NumOfSingle = 0, Addr = 0, count = 0, temp = 0;
 
     Addr = WriteAddr % sFLASH_PROGRAM_PAGESIZE;
     count = sFLASH_PROGRAM_PAGESIZE - Addr;
@@ -325,7 +332,7 @@ uint32_t sFLASH_ReadID(void)
  * @param  byte: byte to send.
  * @retval The value of the received byte.
  */
-static uint8_t sFLASH_SendByte(uint8_t byte)
+static uint8_t __attribute__((optimize("O3"))) /* saves 4 bytes over Os */ sFLASH_SendByte(uint8_t byte)
 {
     /* Loop while DR register in not empty */
     while (SPI_I2S_GetFlagStatus(sFLASH_SPI, SPI_I2S_FLAG_TXE) == RESET);

@@ -18,41 +18,25 @@
  */
 #include "application.h"
 
-retained int variable = 10;
+retained int app_backup = 10;
+int app_ram = 10;
+
+STARTUP(System.disableFeature(FEATURE_RETAINED_MEMORY));
 
 void setup()
 {
-	Serial.begin(9600);
-	if (int(&variable) < 0x30000000) {
-		Serial.printlnf("ERROR: expected variable in backup memory, but was at %x", &variable);
-		return;
-	}
+    Serial.begin(9600);
+    while (!Serial.available()) Particle.process();
 
-	if (!System.featureEnabled(FEATURE_WARM_START))
-	{
-		// cold start
-		Serial.println("Cold start");
-		if (variable!=10)
-		{
-			Serial.printlnf("ERROR: expected retained variable to be initialized to 10, but was %d", variable);
-		}
-		else
-		{
-			Serial.println("Retained variable initialized to 10. Restarting");
-			System.enableFeature(FEATURE_RETAINED_MEMORY);
-			variable++;
-			System.reset();
-		}
-	}
-	else {
-		Serial.println("Warm start");
-		if (variable!=11)
-		{
-			Serial.printlnf("ERROR: expected retained variable to be 11, but was %d", variable);
-		}
-		else
-		{
-			Serial.println("SUCCESS: Retained variable retained after reset");
-		}
-	}
+    if (int(&app_backup) < 0x40024000) {
+        Serial.printlnf("ERROR: expected app_backup in backup memory, but was at %x", &app_backup);
+    }
+
+    if (int(&app_ram) >= 0x40024000) {
+        Serial.printlnf("ERROR: expected app_ram in sram memory, but was at %x", &app_ram);
+    }
+
+    Serial.printlnf("app_backup(%x):%d, app_ram(%x):%d", &app_backup, app_backup, &app_ram, app_ram);
+    app_backup++;
+    app_ram++;
 }

@@ -23,64 +23,14 @@
 
 #include "application.h"
 #include "unit-test/unit-test.h"
-#include "system_threading.h"
-#include <functional>
 
-void* abc = NULL;
+// make clean all TEST=wiring/threading PLATFORM=electron -s COMPILE_LTO=n program-dfu DEBUG_BUILD=y
+//
+// Serial1LogHandler logHandler(115200, LOG_LEVEL_ALL, {
+//     { "comm", LOG_LEVEL_NONE }, // filter out comm messages
+//     { "system", LOG_LEVEL_INFO } // only info level for system messages
+// });
 
 UNIT_TEST_APP();
 SYSTEM_THREAD(ENABLED);
-
-int test_val;
-void increment(void)
-{
-	test_val++;
-}
-
-test(application_thread_can_pump_events)
-{
-	test_val = 0;
-
-	ActiveObjectBase* app = (ActiveObjectBase*)system_internal(0, nullptr);
-	std::function<void(void)> fn = increment;
-	app->invoke_async(fn);
-
-	// test value not incremented
-	assertEqual(test_val, 0);
-
-    Particle.process();
-
-    // validate the function was called.
-    assertEqual(test_val, 1);
-
-}
-
-uint32_t last_listen_event = 0;
-void app_listening(system_event_t event, uint32_t time, void*)
-{
-	last_listen_event = time;
-	if (time>2000)
-		WiFi.listen(false); // exit listening mode
-}
-
-// This test ensures the RTOS time slices between threads when the system is in listening mode.
-// It's not a complete test, since we never exit or re-enter loop so the loop-calling logic isn't exercised.
-// This test indirectly ensures the system thread also runs, since if it didn't then the listen update events wouldn't be
-// published.
-test(application_thread_runs_during_listening_mode)
-{
-	System.on(wifi_listen_update, app_listening);
-
-	uint32_t start = millis();
-	WiFi.listen();
-	delay(10);		// time for the system thread to enter listening mode
-
-	while (millis()-start<1000);		// busy wait 1000 ms
-
-	uint32_t end = millis();
-	assertLess(end-start, 1200);		// small margin of error
-	assertMore(last_listen_event, 0);	// system event should have ran the listen loop
-
-	System.off(app_listening);
-}
 

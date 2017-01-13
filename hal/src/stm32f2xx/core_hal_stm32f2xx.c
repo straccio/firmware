@@ -45,6 +45,21 @@
 #include "core_hal_stm32f2xx.h"
 #include "stm32f2xx.h"
 #include "timer_hal.h"
+#include "dct.h"
+#include "hal_platform.h"
+#include "malloc.h"
+#include "usb_hal.h"
+#include "usart_hal.h"
+#include "deviceid_hal.h"
+#include "pinmap_impl.h"
+
+#if PLATFORM_ID==PLATFORM_P1
+#include "wwd_management.h"
+#include "wlan_hal.h"
+#endif
+
+#define STOP_MODE_EXIT_CONDITION_PIN 0x01
+#define STOP_MODE_EXIT_CONDITION_RTC 0x02
 
 void HardFault_Handler( void ) __attribute__( ( naked ) );
 
@@ -161,21 +176,120 @@ void UsageFault_Handler(void)
 
 /* Private typedef -----------------------------------------------------------*/
 
+typedef struct Last_Reset_Info {
+    int reason;
+    uint32_t data;
+} Last_Reset_Info;
+
+typedef enum Feature_Flag {
+    FEATURE_FLAG_RESET_INFO = 0x01 // HAL_Feature::FEATURE_RESET_INFO
+} Feature_Flag;
+
 /* Private define ------------------------------------------------------------*/
 
 /* Private macro -------------------------------------------------------------*/
 
 /* Private variables ---------------------------------------------------------*/
 
+static Last_Reset_Info last_reset_info = { RESET_REASON_NONE, 0 };
+
 /* Private function prototypes -----------------------------------------------*/
+extern uint32_t HAL_Interrupts_Pin_IRQn(pin_t pin);
+
 void (*HAL_TIM1_Handler)(void);
 void (*HAL_TIM3_Handler)(void);
 void (*HAL_TIM4_Handler)(void);
 void (*HAL_TIM5_Handler)(void);
 void (*HAL_TIM8_Handler)(void);
 
+//HAL Interrupt Handlers defined in xxx_hal.c files
+void HAL_CAN1_TX_Handler(void) __attribute__ ((weak));
+void HAL_CAN1_RX0_Handler(void) __attribute__ ((weak));
+void HAL_CAN1_RX1_Handler(void) __attribute__ ((weak));
+void HAL_CAN1_SCE_Handler(void) __attribute__ ((weak));
+void HAL_CAN2_TX_Handler(void) __attribute__ ((weak));
+void HAL_CAN2_RX0_Handler(void) __attribute__ ((weak));
+void HAL_CAN2_RX1_Handler(void) __attribute__ ((weak));
+void HAL_CAN2_SCE_Handler(void) __attribute__ ((weak));
+
+/* Private functions ---------------------------------------------------------*/
+
+static void Init_Last_Reset_Info()
+{
+    if (HAL_Core_System_Reset_FlagSet(SOFTWARE_RESET))
+    {
+        // Load reset info from backup registers
+        last_reset_info.reason = RTC_ReadBackupRegister(RTC_BKP_DR2);
+        last_reset_info.data = RTC_ReadBackupRegister(RTC_BKP_DR3);
+        // Clear backup registers
+        RTC_WriteBackupRegister(RTC_BKP_DR2, 0);
+        RTC_WriteBackupRegister(RTC_BKP_DR3, 0);
+    }
+    else // Hardware reset
+    {
+        if (HAL_Core_System_Reset_FlagSet(WATCHDOG_RESET))
+        {
+            last_reset_info.reason = RESET_REASON_WATCHDOG;
+        }
+        else if (HAL_Core_System_Reset_FlagSet(POWER_MANAGEMENT_RESET))
+        {
+            last_reset_info.reason = RESET_REASON_POWER_MANAGEMENT; // Reset generated when entering standby mode (nRST_STDBY: 0)
+        }
+        else if (HAL_Core_System_Reset_FlagSet(POWER_DOWN_RESET))
+        {
+            last_reset_info.reason = RESET_REASON_POWER_DOWN;
+        }
+        else if (HAL_Core_System_Reset_FlagSet(POWER_BROWNOUT_RESET))
+        {
+            last_reset_info.reason = RESET_REASON_POWER_BROWNOUT;
+        }
+        else if (HAL_Core_System_Reset_FlagSet(PIN_RESET)) // Pin reset flag should be checked in the last place
+        {
+            last_reset_info.reason = RESET_REASON_PIN_RESET;
+        }
+        else if (PWR_GetFlagStatus(PWR_FLAG_SB) != RESET) // Check if MCU was in standby mode
+        {
+            last_reset_info.reason = RESET_REASON_POWER_MANAGEMENT; // Reset generated when exiting standby mode (nRST_STDBY: 1)
+        }
+        else
+        {
+            last_reset_info.reason = RESET_REASON_UNKNOWN;
+        }
+        last_reset_info.data = 0; // Not used
+    }
+    // Note: RCC reset flags should be cleared, see HAL_Core_Init()
+}
+
+static int Write_Feature_Flag(uint32_t flag, bool value, bool *prev_value)
+{
+    uint32_t flags = *(uint32_t*)dct_read_app_data(DCT_FEATURE_FLAGS_OFFSET);
+    const bool cur_value = flags & flag;
+    if (prev_value)
+    {
+        *prev_value = cur_value;
+    }
+    if (cur_value != value)
+    {
+        if (value)
+        {
+            flags |= flag;
+        }
+        else
+        {
+            flags &= ~flag;
+        }
+        return dct_write_app_data(&flags, DCT_FEATURE_FLAGS_OFFSET, 4);
+    }
+    return 0;
+}
+
+static bool Read_Feature_Flag(uint32_t flag)
+{
+    const uint32_t flags = *(uint32_t*)dct_read_app_data(DCT_FEATURE_FLAGS_OFFSET);
+    return flags & flag;
+}
+
 /* Extern variables ----------------------------------------------------------*/
-extern __IO uint16_t BUTTON_DEBOUNCED_TIME[];
 
 
 /*******************************************************************************
@@ -207,6 +321,9 @@ void HAL_Core_Config(void)
 #if PLATFORM_ID==8 // Additional pins for P1
     for (pin_t pin=24; pin<=29; pin++)
         HAL_Pin_Mode(pin, INPUT);
+    if (isWiFiPowersaveClockDisabled()) {
+        HAL_Pin_Mode(30, INPUT); // Wi-Fi Powersave clock is disabled, default to INPUT
+    }
 #endif
 #if PLATFORM_ID==10 // Additional pins for Electron
     for (pin_t pin=24; pin<=35; pin++)
@@ -224,6 +341,7 @@ void HAL_Core_Config(void)
     Load_SystemFlags();
 #endif
 
+    // TODO: Use current LED theme
     LED_SetRGBColor(RGB_COLOR_WHITE);
     LED_On(LED_RGB);
 
@@ -245,8 +363,6 @@ void HAL_Core_Config(void)
                                       FLASH_INTERNAL, USER_FIRMWARE_IMAGE_LOCATION, FIRMWARE_IMAGE_SIZE,
                                       FACTORY_RESET_MODULE_FUNCTION, MODULE_VERIFY_CRC|MODULE_VERIFY_FUNCTION|MODULE_VERIFY_DESTINATION_IS_START_ADDRESS); //true to verify the CRC during copy also
 #endif
-
-
 }
 
 #if !MODULAR_FIRMWARE
@@ -263,9 +379,22 @@ void HAL_Core_Setup(void) {
     bootloader_update_if_needed();
     HAL_Bootloader_Lock(true);
 
-#if !MODULAR_FIRMWARE
+    HAL_save_device_id(DCT_DEVICE_ID_OFFSET);
+
+#if !defined(MODULAR_FIRMWARE)
     module_user_init_hook();
 #endif
+}
+
+void HAL_Core_Init(void) {
+    if (HAL_Feature_Get(FEATURE_RESET_INFO))
+    {
+        // Clear RCC reset flags
+        RCC_ClearFlag();
+    }
+
+    // Perform platform-specific initialization
+    HAL_Core_Init_finalize();
 }
 
 #if MODULAR_FIRMWARE
@@ -274,7 +403,7 @@ bool HAL_Core_Validate_User_Module(void)
 {
     bool valid = false;
 
-    if (!SYSTEM_FLAG(StartupMode_SysFlag) & 1)
+    if (!(SYSTEM_FLAG(StartupMode_SysFlag) & 1)) // Safe mode flag
     {
         //CRC verification Enabled by default
         if (FLASH_isUserModuleInfoValid(FLASH_INTERNAL, USER_FIRMWARE_IMAGE_LOCATION, USER_FIRMWARE_IMAGE_LOCATION))
@@ -307,6 +436,10 @@ bool HAL_Core_Mode_Button_Pressed(uint16_t pressedMillisDuration)
     {
         pressedState = true;
     }
+    if(BUTTON_GetDebouncedTime(BUTTON1_MIRROR) >= pressedMillisDuration)
+    {
+        pressedState = true;
+    }
 
     return pressedState;
 }
@@ -314,17 +447,29 @@ bool HAL_Core_Mode_Button_Pressed(uint16_t pressedMillisDuration)
 /**
  * Force the button in the unpressed state.
  */
-void HAL_Core_Mode_Button_Reset(void)
+void HAL_Core_Mode_Button_Reset(uint16_t button)
 {
-    /* Disable TIM2 CC1 Interrupt */
-    TIM_ITConfig(TIM2, TIM_IT_CC1, DISABLE);
+    HAL_Buttons[button].debounce_time = 0x00;
 
-    BUTTON_DEBOUNCED_TIME[BUTTON1] = 0x00;
+    if (HAL_Buttons[BUTTON1].active + HAL_Buttons[BUTTON1_MIRROR].active == 0) {
+        /* Disable TIM2 CC1 Interrupt */
+        TIM_ITConfig(TIM2, TIM_IT_CC1, DISABLE);
+    }
 
-    HAL_Notify_Button_State(BUTTON1, false);
+    HAL_Notify_Button_State((Button_TypeDef)button, false);
 
-    /* Enable BUTTON1 Interrupt */
-    BUTTON_EXTI_Config(BUTTON1, ENABLE);
+    /* Enable Button Interrupt */
+    if (button != BUTTON1_MIRROR) {
+        BUTTON_EXTI_Config((Button_TypeDef)button, ENABLE);
+    } else {
+        HAL_InterruptExtraConfiguration irqConf = {0};
+        irqConf.version = HAL_INTERRUPT_EXTRA_CONFIGURATION_VERSION_2;
+        irqConf.IRQChannelPreemptionPriority = 0;
+        irqConf.IRQChannelSubPriority = 0;
+        irqConf.keepHandler = 1;
+        irqConf.keepPriority = 1;
+        HAL_Interrupts_Attach(HAL_Buttons[button].hal_pin, NULL, NULL, HAL_Buttons[button].interrupt_mode, &irqConf);
+    }
 
 }
 
@@ -337,7 +482,35 @@ void HAL_Core_Factory_Reset(void)
 {
     system_flags.Factory_Reset_SysFlag = 0xAAAA;
     Save_SystemFlags();
+    HAL_Core_System_Reset_Ex(RESET_REASON_FACTORY_RESET, 0, NULL);
+}
+
+void HAL_Core_System_Reset_Ex(int reason, uint32_t data, void *reserved)
+{
+    if (HAL_Feature_Get(FEATURE_RESET_INFO))
+    {
+        // Save reset info to backup registers
+        RTC_WriteBackupRegister(RTC_BKP_DR2, reason);
+        RTC_WriteBackupRegister(RTC_BKP_DR3, data);
+    }
     HAL_Core_System_Reset();
+}
+
+int HAL_Core_Get_Last_Reset_Info(int *reason, uint32_t *data, void *reserved)
+{
+    if (HAL_Feature_Get(FEATURE_RESET_INFO))
+    {
+        if (reason)
+        {
+            *reason = last_reset_info.reason;
+        }
+        if (data)
+        {
+            *data = last_reset_info.data;
+        }
+        return 0;
+    }
+    return -1;
 }
 
 void HAL_Core_Enter_Bootloader(bool persist)
@@ -353,53 +526,121 @@ void HAL_Core_Enter_Bootloader(bool persist)
         RTC_WriteBackupRegister(RTC_BKP_DR1, ENTER_DFU_APP_REQUEST);
     }
 
-    HAL_Core_System_Reset();
+    HAL_Core_System_Reset_Ex(RESET_REASON_DFU_MODE, 0, NULL);
 }
 
 void HAL_Core_Enter_Safe_Mode(void* reserved)
 {
     RTC_WriteBackupRegister(RTC_BKP_DR1, ENTER_SAFE_MODE_APP_REQUEST);
-    HAL_Core_System_Reset();
+    HAL_Core_System_Reset_Ex(RESET_REASON_SAFE_MODE, 0, NULL);
 }
 
-void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode)
+void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long seconds)
 {
+    if (!((wakeUpPin < TOTAL_PINS) && (wakeUpPin >= 0) && (edgeTriggerMode <= FALLING)) && seconds <= 0)
+        return;
+
+    SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
+
+    // Detach USB
+    HAL_USB_Detach();
+
+    // Flush all USARTs
+    for (int usart = 0; usart < TOTAL_USARTS; usart++)
+    {
+        if (HAL_USART_Is_Enabled(usart))
+        {
+            HAL_USART_Flush_Data(usart);
+        }
+    }
+
+    int32_t state = HAL_disable_irq();
+
+    uint32_t exit_conditions = 0x00;
+
+    // Suspend all EXTI interrupts
+    HAL_Interrupts_Suspend();
+
+    /* Configure EXTI Interrupt : wake-up from stop mode using pin interrupt */
     if ((wakeUpPin < TOTAL_PINS) && (edgeTriggerMode <= FALLING))
     {
         PinMode wakeUpPinMode = INPUT;
-
         /* Set required pinMode based on edgeTriggerMode */
         switch(edgeTriggerMode)
         {
-        case CHANGE:
-            wakeUpPinMode = INPUT;
-            break;
-
         case RISING:
             wakeUpPinMode = INPUT_PULLDOWN;
             break;
-
         case FALLING:
             wakeUpPinMode = INPUT_PULLUP;
             break;
+        case CHANGE:
+        default:
+            wakeUpPinMode = INPUT;
+            break;
         }
+
         HAL_Pin_Mode(wakeUpPin, wakeUpPinMode);
+        HAL_InterruptExtraConfiguration irqConf = {0};
+        irqConf.version = HAL_INTERRUPT_EXTRA_CONFIGURATION_VERSION_2;
+        irqConf.IRQChannelPreemptionPriority = 0;
+        irqConf.IRQChannelSubPriority = 0;
+        irqConf.keepHandler = 1;
+        irqConf.keepPriority = 1;
+        HAL_Interrupts_Attach(wakeUpPin, NULL, NULL, edgeTriggerMode, &irqConf);
 
-        /* Configure EXTI Interrupt : wake-up from stop mode using pin interrupt */
-        HAL_Interrupts_Attach(wakeUpPin, NULL, NULL, edgeTriggerMode, NULL);
-
-        HAL_Core_Execute_Stop_Mode();
-
-        /* Detach the Interrupt pin */
-        HAL_Interrupts_Detach(wakeUpPin);
+        exit_conditions |= STOP_MODE_EXIT_CONDITION_PIN;
     }
+
+    // Configure RTC wake-up
+    if (seconds > 0) {
+        /*
+         * - To wake up from the Stop mode with an RTC alarm event, it is necessary to:
+         * - Configure the EXTI Line 17 to be sensitive to rising edges (Interrupt
+         * or Event modes) using the EXTI_Init() function.
+         *
+         */
+        HAL_RTC_Cancel_UnixAlarm();
+        HAL_RTC_Set_UnixAlarm((time_t) seconds);
+
+        // Connect RTC to EXTI line
+        EXTI_InitTypeDef EXTI_InitStructure = {0};
+        EXTI_InitStructure.EXTI_Line = EXTI_Line17;
+        EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+        EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+        EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+        EXTI_Init(&EXTI_InitStructure);
+
+        exit_conditions |= STOP_MODE_EXIT_CONDITION_RTC;
+    }
+
+    HAL_Core_Execute_Stop_Mode();
+
+    if (exit_conditions & STOP_MODE_EXIT_CONDITION_PIN) {
+        /* Detach the Interrupt pin */
+        HAL_Interrupts_Detach_Ext(wakeUpPin, 1, NULL);
+    }
+
+    if (exit_conditions & STOP_MODE_EXIT_CONDITION_RTC) {
+        // No need to detach RTC Alarm from EXTI, since it will be detached in HAL_Interrupts_Restore()
+
+        // RTC Alarm should be canceled to avoid entering HAL_RTCAlarm_Handler or if we were woken up by pin
+        HAL_RTC_Cancel_UnixAlarm();
+    }
+
+    // Restore
+    HAL_Interrupts_Restore();
+
+    // Successfully exited STOP mode
+    HAL_enable_irq(state);
+
+    SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
+
+    HAL_USB_Attach();
 }
 
 void HAL_Core_Execute_Stop_Mode(void)
 {
-    /* Enable WKUP pin */
-    PWR_WakeUpPinCmd(ENABLE);
-
     /* Request to enter STOP mode with regulator in low power mode */
     PWR_EnterSTOPMode(PWR_Regulator_LowPower, PWR_STOPEntry_WFI);
 
@@ -429,8 +670,14 @@ void HAL_Core_Execute_Stop_Mode(void)
     while(RCC_GetSYSCLKSource() != 0x08);
 }
 
-void HAL_Core_Enter_Standby_Mode(void)
+void HAL_Core_Enter_Standby_Mode(uint32_t seconds, void* reserved)
 {
+    // Configure RTC wake-up
+    if (seconds > 0) {
+        HAL_RTC_Cancel_UnixAlarm();
+        HAL_RTC_Set_UnixAlarm((time_t) seconds);
+    }
+
     HAL_Core_Execute_Standby_Mode();
 }
 
@@ -499,6 +746,12 @@ void application_start()
 
     generate_key();
 
+    if (HAL_Feature_Get(FEATURE_RESET_INFO))
+    {
+        // Load last reset info from RCC / backup registers
+        Init_Last_Reset_Info();
+    }
+
     app_setup_and_loop();
 }
 
@@ -540,17 +793,21 @@ void SysTickOverride(void)
  * @param  None
  * @retval None
  */
-void Handle_Mode_Button_EXTI_irq(void)
+void Handle_Mode_Button_EXTI_irq(Button_TypeDef button)
 {
-    if (EXTI_GetITStatus(BUTTON1_EXTI_LINE) != RESET)
+    if (button == BUTTON1_MIRROR || EXTI_GetITStatus(HAL_Buttons[button].exti_line) != RESET)
     {
         /* Clear the EXTI line pending bit (cleared in WICED GPIO IRQ handler) */
-        EXTI_ClearITPendingBit(BUTTON1_EXTI_LINE);
+        EXTI_ClearITPendingBit(HAL_Buttons[button].exti_line);
 
-        BUTTON_DEBOUNCED_TIME[BUTTON1] = 0x00;
+        HAL_Buttons[button].debounce_time = 0x00;
+        HAL_Buttons[button].active = 1;
 
         /* Disable BUTTON1 Interrupt */
-        BUTTON_EXTI_Config(BUTTON1, DISABLE);
+        if (button != BUTTON1_MIRROR)
+            BUTTON_EXTI_Config(button, DISABLE);
+        else
+            HAL_Interrupts_Detach_Ext(HAL_Buttons[button].hal_pin, 1, NULL);
 
         /* Enable TIM2 CC1 Interrupt */
         TIM_ITConfig(TIM2, TIM_IT_CC1, ENABLE);
@@ -594,18 +851,34 @@ void TIM2_irq(void)
 {
     if (TIM_GetITStatus(TIM2, TIM_IT_CC1) != RESET)
     {
-        if (BUTTON_GetState(BUTTON1) == BUTTON1_PRESSED)
+        if (HAL_Buttons[BUTTON1].active && BUTTON_GetState(BUTTON1) == BUTTON1_PRESSED)
         {
-            if (!BUTTON_DEBOUNCED_TIME[BUTTON1])
+            if (!HAL_Buttons[BUTTON1].debounce_time)
             {
-            BUTTON_DEBOUNCED_TIME[BUTTON1] += BUTTON_DEBOUNCE_INTERVAL;
+                HAL_Buttons[BUTTON1].debounce_time += BUTTON_DEBOUNCE_INTERVAL;
                 HAL_Notify_Button_State(BUTTON1, true);
+            }
+            HAL_Buttons[BUTTON1].debounce_time += BUTTON_DEBOUNCE_INTERVAL;
         }
-            BUTTON_DEBOUNCED_TIME[BUTTON1] += BUTTON_DEBOUNCE_INTERVAL;
-        }
-        else
+        else if (HAL_Buttons[BUTTON1].active)
         {
-            HAL_Core_Mode_Button_Reset();
+            HAL_Buttons[BUTTON1].active = 0;
+            HAL_Core_Mode_Button_Reset(BUTTON1);
+        }
+
+        if (HAL_Buttons[BUTTON1_MIRROR].port && HAL_Buttons[BUTTON1_MIRROR].active &&
+            BUTTON_GetState(BUTTON1_MIRROR) == (HAL_Buttons[BUTTON1_MIRROR].interrupt_mode == RISING ? 1 : 0)) {
+            if (!HAL_Buttons[BUTTON1_MIRROR].debounce_time)
+            {
+                HAL_Buttons[BUTTON1_MIRROR].debounce_time += BUTTON_DEBOUNCE_INTERVAL;
+                HAL_Notify_Button_State(BUTTON1_MIRROR, true);
+            }
+            HAL_Buttons[BUTTON1_MIRROR].debounce_time += BUTTON_DEBOUNCE_INTERVAL;
+        }
+        else if (HAL_Buttons[BUTTON1_MIRROR].port && HAL_Buttons[BUTTON1_MIRROR].active)
+        {
+            HAL_Buttons[BUTTON1_MIRROR].active = 0;
+            HAL_Core_Mode_Button_Reset(BUTTON1_MIRROR);
         }
     }
 
@@ -794,23 +1067,75 @@ void TIM1_TRG_COM_TIM11_irq(void)
     UNUSED(result);
 }
 
+void CAN1_TX_irq()
+{
+    if(NULL != HAL_CAN1_TX_Handler)
+    {
+        HAL_CAN1_TX_Handler();
+    }
+    HAL_System_Interrupt_Trigger(SysInterrupt_CAN1_TX_IRQ, NULL);
+}
+
+void CAN1_RX0_irq()
+{
+    if(NULL != HAL_CAN1_RX0_Handler)
+    {
+        HAL_CAN1_RX0_Handler();
+    }
+    HAL_System_Interrupt_Trigger(SysInterrupt_CAN1_RX0_IRQ, NULL);
+}
+
+void CAN1_RX1_irq()
+{
+    if(NULL != HAL_CAN1_RX1_Handler)
+    {
+        HAL_CAN1_RX1_Handler();
+    }
+    HAL_System_Interrupt_Trigger(SysInterrupt_CAN1_RX1_IRQ, NULL);
+}
+
+void CAN1_SCE_irq()
+{
+    if(NULL != HAL_CAN1_SCE_Handler)
+    {
+        HAL_CAN1_SCE_Handler();
+    }
+    HAL_System_Interrupt_Trigger(SysInterrupt_CAN1_SCE_IRQ, NULL);
+}
+
 void CAN2_TX_irq()
 {
+    if(NULL != HAL_CAN2_TX_Handler)
+    {
+        HAL_CAN2_TX_Handler();
+    }
     HAL_System_Interrupt_Trigger(SysInterrupt_CAN2_TX_IRQ, NULL);
 }
 
 void CAN2_RX0_irq()
 {
+    if(NULL != HAL_CAN2_RX0_Handler)
+    {
+        HAL_CAN2_RX0_Handler();
+    }
     HAL_System_Interrupt_Trigger(SysInterrupt_CAN2_RX0_IRQ, NULL);
 }
 
 void CAN2_RX1_irq()
 {
+    if(NULL != HAL_CAN2_RX1_Handler)
+    {
+        HAL_CAN2_RX1_Handler();
+    }
     HAL_System_Interrupt_Trigger(SysInterrupt_CAN2_RX1_IRQ, NULL);
 }
 
 void CAN2_SCE_irq()
 {
+    if(NULL != HAL_CAN2_SCE_Handler)
+    {
+        HAL_CAN2_SCE_Handler();
+    }
     HAL_System_Interrupt_Trigger(SysInterrupt_CAN2_SCE_IRQ, NULL);
 }
 
@@ -822,36 +1147,30 @@ void HAL_Bootloader_Lock(bool lock)
         FLASH_WriteProtection_Disable(BOOTLOADER_FLASH_PAGES);
 }
 
+static inline bool Is_System_Reset_Flag_Set(uint8_t flag)
+{
+    return SYSTEM_FLAG(RCC_CSR_SysFlag) & ((uint32_t)1 << (flag & 0x1f));
+}
+
 bool HAL_Core_System_Reset_FlagSet(RESET_TypeDef resetType)
 {
-    uint8_t FLAG_Mask = 0x1F;
-    uint8_t RCC_Flag = 0;
-
     switch(resetType)
     {
     case PIN_RESET:
-        RCC_Flag = RCC_FLAG_PINRST;
-        break;
-
+        return Is_System_Reset_Flag_Set(RCC_FLAG_PINRST);
     case SOFTWARE_RESET:
-        RCC_Flag = RCC_FLAG_SFTRST;
-        break;
-
+        return Is_System_Reset_Flag_Set(RCC_FLAG_SFTRST);
     case WATCHDOG_RESET:
-        RCC_Flag = RCC_FLAG_IWDGRST;
-        break;
-
-    case LOW_POWER_RESET:
-        RCC_Flag = RCC_FLAG_LPWRRST;
-        break;
+        return Is_System_Reset_Flag_Set(RCC_FLAG_IWDGRST) || Is_System_Reset_Flag_Set(RCC_FLAG_WWDGRST);
+    case POWER_MANAGEMENT_RESET:
+        return Is_System_Reset_Flag_Set(RCC_FLAG_LPWRRST);
+    case POWER_DOWN_RESET:
+        return Is_System_Reset_Flag_Set(RCC_FLAG_PORRST);
+    case POWER_BROWNOUT_RESET:
+        return Is_System_Reset_Flag_Set(RCC_FLAG_BORRST);
+    default:
+        return false;
     }
-
-    if ((RCC_Flag != 0) && (SYSTEM_FLAG(RCC_CSR_SysFlag) & ((uint32_t)1 << (RCC_Flag & FLAG_Mask))))
-    {
-        return true;
-    }
-
-    return false;
 }
 
 unsigned HAL_Core_System_Clock(HAL_SystemClock clock, void* reserved)
@@ -864,7 +1183,9 @@ uint32_t HAL_Core_Runtime_Info(runtime_info_t* info, void* reserved)
     extern unsigned char _eheap[];
     extern unsigned char *sbrk_heap_top;
 
-    info->freeheap = _eheap-sbrk_heap_top;
+    struct mallinfo heapinfo = mallinfo();
+    info->freeheap = _eheap-sbrk_heap_top + heapinfo.fordblks;
+
     return 0;
 }
 
@@ -890,6 +1211,26 @@ int HAL_Feature_Set(HAL_Feature feature, bool enabled)
             }
             return 0;
         }
+        case FEATURE_RESET_INFO:
+        {
+            Write_Feature_Flag(FEATURE_FLAG_RESET_INFO, enabled, NULL);
+            return 0;
+        }
+
+#if PLATFORM_ID==PLATFORM_P1
+        case FEATURE_WIFI_POWERSAVE_CLOCK:
+        {
+            wwd_set_wlan_sleep_clock_enabled(enabled);
+            const uint8_t* data = (const uint8_t*)dct_read_app_data(DCT_RADIO_FLAGS_OFFSET);
+            uint8_t current = (*data);
+            current &= 0xFC;
+            if (!enabled) {
+                current |= 2;   // 0bxxxxxx10 to disable the clock, any other value to enable it.
+            }
+            dct_write_app_data(&current, DCT_RADIO_FLAGS_OFFSET, 1);
+        }
+#endif
+
 
     }
     return -1;
@@ -909,6 +1250,328 @@ bool HAL_Feature_Get(HAL_Feature feature)
         {
             return (PWR_GetFlagStatus(PWR_FLAG_BRR) != RESET);
         }
+
+        case FEATURE_CLOUD_UDP:
+        {
+        		uint8_t value = false;
+#if HAL_PLATFORM_CLOUD_UDP
+        		const uint8_t* data = dct_read_app_data(DCT_CLOUD_TRANSPORT_OFFSET);
+        		value = *data==0xFF;		// default is to use UDP
+#endif
+        		return value;
+        }
+        case FEATURE_RESET_INFO:
+        {
+            return Read_Feature_Flag(FEATURE_FLAG_RESET_INFO);
+        }
     }
     return false;
 }
+
+void HAL_Core_Mode_Button_Mirror_Pressed(void* param) {
+    Handle_Mode_Button_EXTI_irq(BUTTON1_MIRROR);
+}
+
+static void BUTTON_Mirror_Init() {
+    if (HAL_Buttons[BUTTON1_MIRROR].port) {
+        PinMode pinMode = INPUT_PULLUP;
+        switch(HAL_Buttons[BUTTON1_MIRROR].interrupt_mode)
+        {
+        case RISING:
+            pinMode = INPUT_PULLDOWN;
+            break;
+        case FALLING:
+            pinMode = INPUT_PULLUP;
+            break;
+        }
+
+        int32_t state = HAL_disable_irq();
+        HAL_Pin_Mode(HAL_Buttons[BUTTON1_MIRROR].hal_pin, pinMode);
+        HAL_Interrupts_Attach(HAL_Buttons[BUTTON1_MIRROR].hal_pin, HAL_Core_Mode_Button_Mirror_Pressed, NULL, HAL_Buttons[BUTTON1_MIRROR].interrupt_mode, NULL);
+        if (HAL_Buttons[BUTTON1_MIRROR].exti_line == HAL_Buttons[BUTTON1].exti_line) {
+            HAL_Buttons[BUTTON1].exti_port_source = HAL_Buttons[BUTTON1_MIRROR].exti_port_source;
+            HAL_Buttons[BUTTON1].exti_pin_source = HAL_Buttons[BUTTON1_MIRROR].exti_pin_source;
+            HAL_Buttons[BUTTON1].port = HAL_Buttons[BUTTON1_MIRROR].port;
+        }
+        HAL_enable_irq(state);
+    }
+}
+
+static void BUTTON_Mirror_Persist(button_config_t* conf) {
+    const button_config_t* saved_config = (const button_config_t*)dct_read_app_data(DCT_MODE_BUTTON_MIRROR_OFFSET);
+
+    if (conf) {
+        if (saved_config->active == 0xFF || memcmp((void*)conf, (void*)saved_config, sizeof(button_config_t)))
+        {
+            dct_write_app_data((void*)conf, DCT_MODE_BUTTON_MIRROR_OFFSET, sizeof(button_config_t));
+        }
+    } else {
+        if (saved_config->active != 0xFF) {
+            button_config_t tmp;
+            memset((void*)&tmp, 0xff, sizeof(button_config_t));
+            dct_write_app_data((void*)&tmp, DCT_MODE_BUTTON_MIRROR_OFFSET, sizeof(button_config_t));
+        }
+    }
+}
+
+void HAL_Core_Button_Mirror_Pin_Disable(uint8_t bootloader, uint8_t button, void* reserved) {
+    (void)button; // unused
+    int32_t state = HAL_disable_irq();
+    if (HAL_Buttons[BUTTON1_MIRROR].port) {
+        HAL_Interrupts_Detach_Ext(HAL_Buttons[BUTTON1_MIRROR].hal_pin, 1, NULL);
+        HAL_Buttons[BUTTON1_MIRROR].active = 0;
+        HAL_Buttons[BUTTON1_MIRROR].port = 0;
+    }
+    HAL_enable_irq(state);
+
+    if (bootloader) {
+        BUTTON_Mirror_Persist(NULL);
+    }
+}
+
+static inline uint32_t Gpio_Peripheral_To_Port_Source(GPIO_TypeDef* gpio)
+{
+    switch((uint32_t)gpio) {
+        case (uint32_t)GPIOA:
+            return 0;
+        case (uint32_t)GPIOB:
+            return 1;
+        case (uint32_t)GPIOC:
+            return 2;
+        case (uint32_t)GPIOD:
+            return 3;
+    }
+
+    return 0;
+}
+
+static inline uint32_t Gpio_Peripheral_To_Clk(GPIO_TypeDef* gpio) {
+    switch((uint32_t)gpio) {
+        case (uint32_t)GPIOA:
+            return RCC_AHB1Periph_GPIOA;
+        case (uint32_t)GPIOB:
+            return RCC_AHB1Periph_GPIOB;
+        case (uint32_t)GPIOC:
+            return RCC_AHB1Periph_GPIOC;
+        case (uint32_t)GPIOD:
+            return RCC_AHB1Periph_GPIOD;
+    }
+
+    return 0;
+}
+
+static inline uint32_t Tim_Peripheral_To_Af(TIM_TypeDef* tim) {
+    switch((uint32_t)tim) {
+        case (uint32_t)TIM1:
+            return GPIO_AF_TIM1;
+        case (uint32_t)TIM2:
+            return GPIO_AF_TIM2;
+        case (uint32_t)TIM3:
+            return GPIO_AF_TIM3;
+        case (uint32_t)TIM4:
+            return GPIO_AF_TIM4;
+        case (uint32_t)TIM5:
+            return GPIO_AF_TIM5;
+#if PLATFORM_ID == 10
+        case (uint32_t)TIM8:
+            return GPIO_AF_TIM8;
+#endif // PLATFORM_ID == 10
+    }
+
+    return 0;
+}
+
+void HAL_Core_Button_Mirror_Pin(uint16_t pin, InterruptMode mode, uint8_t bootloader, uint8_t button, void *reserved) {
+    (void)button; // unused
+    STM32_Pin_Info* pinmap = HAL_Pin_Map();
+    if (pin > TOTAL_PINS)
+        return;
+
+    if (mode != RISING && mode != FALLING)
+        return;
+
+    uint8_t gpio_port_source = Gpio_Peripheral_To_Port_Source(pinmap[pin].gpio_peripheral);
+    uint32_t gpio_clk = Gpio_Peripheral_To_Clk(pinmap[pin].gpio_peripheral);
+
+    button_config_t conf = {
+        .port = pinmap[pin].gpio_peripheral,
+        .pin = pinmap[pin].gpio_pin,
+        .hal_pin = pin,
+        .debounce_time = 0,
+        .interrupt_mode = mode,
+
+        .exti_line = pinmap[pin].gpio_pin,
+        .exti_pin_source = pinmap[pin].gpio_pin_source,
+        .exti_port_source = gpio_port_source,
+        .exti_trigger = mode == RISING ? EXTI_Trigger_Rising : EXTI_Trigger_Falling
+    };
+
+    HAL_Buttons[BUTTON1_MIRROR] = conf;
+
+    BUTTON_Mirror_Init();
+
+    if (pinmap[pin].gpio_pin == HAL_Buttons[BUTTON1].pin) {
+        LOG(WARN, "Pin %d shares the same EXTI as SETUP/MODE button", pin);
+        BUTTON_Mirror_Persist(NULL);
+        return;
+    }
+
+    if (!bootloader) {
+        BUTTON_Mirror_Persist(NULL);
+        return;
+    }
+
+    // Construct button_config_t for bootloader
+    button_config_t bootloader_conf = {
+        .active = 0xAA,
+        .port = pinmap[pin].gpio_peripheral,
+        .pin = pinmap[pin].gpio_pin,
+        .clk = gpio_clk,
+        .mode = GPIO_Mode_IN,
+        .pupd = mode == RISING ? GPIO_PuPd_DOWN : GPIO_PuPd_UP,
+        .debounce_time = 0xBBCC,
+
+        .exti_line = pinmap[pin].gpio_pin,
+        .exti_port_source = gpio_port_source,
+        .exti_pin_source = pinmap[pin].gpio_pin_source,
+        .exti_irqn = HAL_Interrupts_Pin_IRQn(pin),
+        .exti_irq_prio = HAL_Buttons[BUTTON1].exti_irq_prio,
+        .exti_trigger = mode == RISING ? EXTI_Trigger_Rising : EXTI_Trigger_Falling
+    };
+
+    BUTTON_Mirror_Persist(&bootloader_conf);
+}
+
+static void LED_Mirror_Persist(uint8_t led, led_config_t* conf) {
+    const size_t offset = DCT_LED_MIRROR_OFFSET + ((led - LED_MIRROR_OFFSET) * sizeof(led_config_t));
+    const led_config_t* saved_config = (const led_config_t*)dct_read_app_data(offset);
+
+    if (conf) {
+        if (saved_config->version == 0xFF || memcmp((void*)conf, (void*)saved_config, sizeof(led_config_t)))
+        {
+            dct_write_app_data((void*)conf, offset, sizeof(led_config_t));
+        }
+    } else {
+        if (saved_config->version != 0xFF) {
+            led_config_t tmp;
+            memset((void*)&tmp, 0xff, sizeof(led_config_t));
+            dct_write_app_data((void*)&tmp, offset, sizeof(led_config_t));
+        }
+    }
+}
+
+void HAL_Core_Led_Mirror_Pin_Disable(uint8_t led, uint8_t bootloader, void* reserved)
+{
+    int32_t state = HAL_disable_irq();
+    led_config_t* ledc = HAL_Led_Get_Configuration(led, NULL);
+    if (ledc->is_active) {
+        ledc->is_active = 0;
+        HAL_Pin_Mode(ledc->hal_pin, INPUT);
+    }
+    HAL_enable_irq(state);
+
+    if (bootloader) {
+        LED_Mirror_Persist(led, NULL);
+    }
+}
+
+void HAL_Core_Led_Mirror_Pin(uint8_t led, pin_t pin, uint32_t flags, uint8_t bootloader, void* reserved)
+{
+    if (pin > TOTAL_PINS)
+        return;
+
+    STM32_Pin_Info* pinmap = HAL_Pin_Map();
+
+    if (!pinmap[pin].timer_peripheral)
+        return;
+
+    // NOTE: `flags` currently only control whether the LED state should be inverted
+    // NOTE: All mirrored LEDs are currently PWM
+
+    led_config_t conf = {
+        .version = 0x01,
+        .port = pinmap[pin].gpio_peripheral,
+        .pin = pinmap[pin].gpio_pin,
+        .hal_pin = pin,
+        .hal_mode = AF_OUTPUT_PUSHPULL,
+        .pin_source = pinmap[pin].gpio_pin_source,
+        .af = 0,
+        .tim_peripheral = 0,
+        .tim_channel = 0,
+        .is_active = 1,
+        .is_hal_pin = 1,
+        .is_inverted = flags & 1,
+        .is_pwm = 1
+    };
+
+    int32_t state = HAL_disable_irq();
+    HAL_Led_Init(led, &conf, NULL);
+    HAL_enable_irq(state);
+
+    if (!bootloader) {
+        LED_Mirror_Persist(led, NULL);
+        return;
+    }
+
+    led_config_t bootloader_conf = {
+        .version = 0x01,
+        .port = pinmap[pin].gpio_peripheral,
+        .pin = pinmap[pin].gpio_pin,
+        .clk = Gpio_Peripheral_To_Clk(pinmap[pin].gpio_peripheral),
+        .mode = GPIO_Mode_AF,
+        .pin_source = pinmap[pin].gpio_pin_source,
+        .af = Tim_Peripheral_To_Af(pinmap[pin].timer_peripheral),
+        .tim_peripheral = pinmap[pin].timer_peripheral,
+        .tim_channel = pinmap[pin].timer_ch,
+        .is_active = 1,
+        .is_hal_pin = 0,
+        .is_inverted = flags & 1,
+        .is_pwm = 1
+    };
+
+    LED_Mirror_Persist(led, &bootloader_conf);
+}
+
+#if HAL_PLATFORM_CLOUD_UDP
+
+#include "dtls_session_persist.h"
+#include "deepsleep_hal_impl.h"
+#include <string.h>
+
+retained_system SessionPersistDataOpaque session;
+
+int HAL_System_Backup_Save(size_t offset, const void* buffer, size_t length, void* reserved)
+{
+	if (offset==0 && length==sizeof(SessionPersistDataOpaque))
+	{
+		memcpy(&session, buffer, length);
+		return 0;
+	}
+	return -1;
+}
+
+int HAL_System_Backup_Restore(size_t offset, void* buffer, size_t max_length, size_t* length, void* reserved)
+{
+	if (offset==0 && max_length>=sizeof(SessionPersistDataOpaque) && session.size==sizeof(SessionPersistDataOpaque))
+	{
+		*length = sizeof(SessionPersistDataOpaque);
+		memcpy(buffer, &session, sizeof(session));
+		return 0;
+	}
+	return -1;
+}
+
+
+#else
+
+int HAL_System_Backup_Save(size_t offset, const void* buffer, size_t length, void* reserved)
+{
+	return -1;
+}
+
+int HAL_System_Backup_Restore(size_t offset, void* buffer, size_t max_length, size_t* length, void* reserved)
+{
+	return -1;
+}
+
+#endif

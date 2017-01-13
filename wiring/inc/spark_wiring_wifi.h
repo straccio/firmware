@@ -95,6 +95,10 @@ public:
     	return IPAddress(wifi_config()->nw.aucDHCPServer);
     }
 
+    uint8_t* BSSID(uint8_t* bssid) {
+    		memcpy(bssid, wifi_config()->BSSID, 6);
+    		return bssid;
+    }
 
     const char *SSID() {
         return (const char *) wifi_config()->uaSSID;
@@ -135,6 +139,14 @@ public:
 
     void listen(bool begin=true) {
         network_listen(*this, begin ? 0 : 1, NULL);
+    }
+
+    void setListenTimeout(uint16_t timeout) {
+        network_set_listen_timeout(*this, timeout, NULL);
+    }
+
+    uint16_t getListenTimeout(void) {
+        return network_get_listen_timeout(*this, 0, NULL);
     }
 
     bool listening(void) {
@@ -213,6 +225,8 @@ public:
     int scan(void (*handler)(WiFiAccessPoint* ap, T* instance), T* instance) {
         return scan((wlan_scan_result_t)handler, (void*)instance);
     }
+
+    int getCredentials(WiFiAccessPoint* results, size_t result_count);
 };
 
 extern WiFiClass WiFi;
