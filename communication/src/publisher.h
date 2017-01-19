@@ -54,6 +54,7 @@ public:
 
 	bool is_rate_limited(bool is_system_event, system_tick_t millis)
 	{
+#ifdef PARTICLE_CLOUD_NO_BURST_LIMIT
 		if (is_system_event)
 		{
 			static uint16_t lastMinute = 0;
@@ -89,6 +90,7 @@ public:
 				return true;
 			}
 		}
+#endif
 		return false;
 	}
 

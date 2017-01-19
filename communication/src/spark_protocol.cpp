@@ -480,6 +480,7 @@ bool SparkProtocol::send_event(const char *event_name, const char *data, int ttl
     return false;
   }
 
+#ifdef PARTICLE_CLOUD_NO_BURST_LIMIT
   bool is_system_event = is_system(event_name);
 
   if (is_system_event) {
@@ -516,6 +517,7 @@ bool SparkProtocol::send_event(const char *event_name, const char *data, int ttl
       return false;
     }
   }
+#endif
   uint16_t msg_id = next_message_id();
   const bool confirmable = flags & EventType::WITH_ACK;
   size_t msglen = Messages::event(queue + 2, msg_id, event_name, data, ttl, event_type, confirmable);

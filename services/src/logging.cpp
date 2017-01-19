@@ -23,6 +23,7 @@
 #include "service_debug.h"
 #include "static_assert.h"
 
+#if PLATFORM_ID!=3
 #define STATIC_ASSERT_FIELD_SIZE(struct, field, size) \
         STATIC_ASSERT(field_size_changed_##struct##_##field, sizeof(struct::field) == size);
 
@@ -61,6 +62,7 @@ STATIC_ASSERT_FIELD_SIZE(LogAttributes, details, sizeof(const char*));
 STATIC_ASSERT_FIELD_ORDER(LogAttributes, code, details);
 // LogAttributes::end
 STATIC_ASSERT_FIELD_ORDER(LogAttributes, details, end);
+#endif
 
 namespace {
 

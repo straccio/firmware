@@ -77,9 +77,10 @@ public:
     template <typename T, class ... Types>
     static inline bool variable(const T &name, const Types& ... args)
     {
+#if PLATFORM_ID!=3
         static_assert(!IsStringLiteral(name) || sizeof(name) <= USER_VAR_KEY_LENGTH + 1,
             "\n\nIn Particle.variable, name must be " __XSTRING(USER_VAR_KEY_LENGTH) " characters or less\n\n");
-
+#endif
         return _variable(name, args...);
     }
 
