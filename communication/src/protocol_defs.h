@@ -62,12 +62,20 @@ typedef uint16_t chunk_index_t;
 const chunk_index_t NO_CHUNKS_MISSING = 65535;
 const chunk_index_t MAX_CHUNKS = 65535;
 const size_t MISSED_CHUNKS_TO_SEND = 50;
+// #if PLATFORM_ID==3
+// const size_t MAX_FUNCTION_ARG_LENGTH = 128;
+// const size_t MAX_FUNCTION_KEY_LENGTH = 16;
+// const size_t MAX_VARIABLE_KEY_LENGTH = 16;
+// const size_t MAX_EVENT_NAME_LENGTH = 128;
+// const size_t MAX_EVENT_DATA_LENGTH = 128;
+// #else
 const size_t MAX_FUNCTION_ARG_LENGTH = 64;
 const size_t MAX_FUNCTION_KEY_LENGTH = 12;
 const size_t MAX_VARIABLE_KEY_LENGTH = 12;
 const size_t MAX_EVENT_NAME_LENGTH = 64;
 const size_t MAX_EVENT_DATA_LENGTH = 64;
 const size_t MAX_EVENT_TTL_SECONDS = 16777215;
+// #endif
 
 // Timeout in milliseconds given to receive an acknowledgement for a published event
 const unsigned SEND_EVENT_ACK_TIMEOUT = 20000;
@@ -76,7 +84,11 @@ const unsigned SEND_EVENT_ACK_TIMEOUT = 20000;
     #if PLATFORM_ID<2
         #define PROTOCOL_BUFFER_SIZE 640
     #else
+      #if PLATFORM_ID==3
+        #define PROTOCOL_BUFFER_SIZE 4096
+      #else
         #define PROTOCOL_BUFFER_SIZE 800
+      #endif
     #endif
 #endif
 

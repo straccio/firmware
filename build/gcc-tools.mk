@@ -14,7 +14,7 @@ endif
 
 # C compiler flags
 CFLAGS +=  -g3 -m32 -O$(GCC_OPTIMIZE) -gdwarf-2
-CFLAGS += -Wno-unused-local-typedefs -Wno-return-type-c-linkage
+CFLAGS += -Wno-unused-local-typedefs -Wno-return-type-c-linkage -O$(GCC_OPTIMIZE)
 CPPFLAGS += -m32 -Wno-unused-private-field
 ASFLAGS +=  -g3
 

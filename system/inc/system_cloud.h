@@ -179,31 +179,83 @@ ProtocolFacade* system_cloud_protocol_instance(void);
 
 int spark_set_connection_property(unsigned property_id, unsigned data, void* datap, void* reserved);
 
-
+#ifndef SPARK_BUF_LEN
 #define SPARK_BUF_LEN			        600
+#endif
 
 //#define SPARK_SERVER_IP			        "54.235.79.249"
+#ifndef SPARK_SERVER_PORT
 #define SPARK_SERVER_PORT		        5683
+#endif
+#ifndef PORT_COAPS
 #define PORT_COAPS						(5684)
+#endif
+#ifndef SPARK_LOOP_DELAY_MILLIS
 #define SPARK_LOOP_DELAY_MILLIS		        1000    //1sec
+#endif
+#ifndef SPARK_RECEIVE_DELAY_MILLIS
 #define SPARK_RECEIVE_DELAY_MILLIS              10      //10ms
+#endif
 
+#ifndef TIMING_FLASH_UPDATE_TIMEOUT
 #if PLATFORM_ID==10
 #define TIMING_FLASH_UPDATE_TIMEOUT             90000   //90sec
 #else
 #define TIMING_FLASH_UPDATE_TIMEOUT             30000   //30sec
 #endif
+#endif
 
-#define USER_VAR_MAX_COUNT		        10
-#define USER_VAR_KEY_LENGTH		        12
+#if PLATFORM_ID==3
+#ifndef USER_VAR_MAX_COUNT
+#define USER_VAR_MAX_COUNT		        512
+#endif
+#ifndef USER_VAR_KEY_LENGTH
+#define USER_VAR_KEY_LENGTH		        20
+#endif
 
-#define USER_FUNC_MAX_COUNT		        4
+#ifndef USER_FUNC_MAX_COUNT
+#define USER_FUNC_MAX_COUNT		        8
+#endif
+#ifndef USER_FUNC_KEY_LENGTH
 #define USER_FUNC_KEY_LENGTH		        12
+#endif
+#ifndef USER_FUNC_ARG_LENGTH
 #define USER_FUNC_ARG_LENGTH		        64
+#endif
 
+#ifndef USER_EVENT_NAME_LENGTH
+#define USER_EVENT_NAME_LENGTH		        128
+#endif
+#ifndef USER_EVENT_DATA_LENGTH
+#define USER_EVENT_DATA_LENGTH		        128
+#endif
+
+#else
+
+#ifndef USER_VAR_MAX_COUNT
+#define USER_VAR_MAX_COUNT		        10
+#endif
+#ifndef USER_VAR_KEY_LENGTH
+#define USER_VAR_KEY_LENGTH		        12
+#endif
+
+#ifndef USER_FUNC_MAX_COUNT
+#define USER_FUNC_MAX_COUNT		        4
+#endif
+#ifndef USER_FUNC_KEY_LENGTH
+#define USER_FUNC_KEY_LENGTH		        12
+#endif
+#ifndef USER_FUNC_ARG_LENGTH
+#define USER_FUNC_ARG_LENGTH		        64
+#endif
+
+#ifndef USER_EVENT_NAME_LENGTH
 #define USER_EVENT_NAME_LENGTH		        64
+#endif
+#ifndef USER_EVENT_DATA_LENGTH
 #define USER_EVENT_DATA_LENGTH		        64
-
+#endif
+#endif
 #ifdef __cplusplus
 }
 #endif
