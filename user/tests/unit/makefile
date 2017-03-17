@@ -66,6 +66,7 @@ CSRC += $(call target_files,$(LIB_SERVICES)src,jsmn.c)
 CPPSRC += $(call target_files,$(LIB_SERVICES)src,logging.cpp)
 CPPSRC += $(call target_files,$(LIB_SERVICES)src,system_error.cpp)
 CPPSRC += $(call target_files,$(LIB_SERVICES)src,led_service.cpp)
+CPPSRC += $(call target_files,$(LIB_SERVICES)src,completion_handler.cpp)
 
 
 # Additional include directories, applied to objects built for this target.
@@ -78,6 +79,7 @@ INCLUDE_DIRS += $(HAL)shared
 INCLUDE_DIRS += $(HAL)inc
 INCLUDE_DIRS += $(COMMUNICATION)src
 INCLUDE_DIRS += dynalib/inc
+INCLUDE_DIRS += platform/shared/inc
 
 # prefix $(SRC_ROOT)
 ABS_INCLUDE_DIRS += $(patsubst %,$(SRC_ROOT)/%,$(INCLUDE_DIRS))
