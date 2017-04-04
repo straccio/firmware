@@ -13,9 +13,9 @@ ifeq ($(DEBUG_BUILD),y)
 endif
 
 # C compiler flags
-CFLAGS +=  -g3 -m32 -O$(GCC_OPTIMIZE) -gdwarf-2
+CFLAGS +=  -g3 -O$(GCC_OPTIMIZE) -gdwarf-2
 CFLAGS += -Wno-unused-local-typedefs -O$(GCC_OPTIMIZE)
-CPPFLAGS += -m32
+CPPFLAGS +=
 
 ASFLAGS +=  -g3
 
