@@ -53,3 +53,5 @@ nbproject/
 build/target/
 build/cores/
 hal/soft-ap/.idea/
+
+boost_1_61_0.tar.gz
