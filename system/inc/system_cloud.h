@@ -199,9 +199,9 @@ int spark_set_connection_property(unsigned property_id, unsigned data, void* dat
 
 #ifndef TIMING_FLASH_UPDATE_TIMEOUT
 #if PLATFORM_ID==10
-#define TIMING_FLASH_UPDATE_TIMEOUT             90000   //90sec
+#define TIMING_FLASH_UPDATE_TIMEOUT   90000   //90sec
 #else
-#define TIMING_FLASH_UPDATE_TIMEOUT             30000   //30sec
+#define TIMING_FLASH_UPDATE_TIMEOUT   30000   //30sec
 #endif
 #endif
 
@@ -256,6 +256,7 @@ int spark_set_connection_property(unsigned property_id, unsigned data, void* dat
 #define USER_EVENT_DATA_LENGTH		        64
 #endif
 #endif
+
 #ifdef __cplusplus
 }
 #endif
