@@ -2535,8 +2535,9 @@
 #include MBEDTLS_USER_CONFIG_FILE
 #endif
 
+#if PLATFORM_ID != 3
 #include "mbedtls_weaken.h"
-
+#endif
 #endif /* MBEDTLS_CONFIG_H */
 
 #endif // PLATFORM_ID == 6 || PLATFORM_ID == 8
