@@ -205,7 +205,5 @@ void DeviceConfig::read(Configuration& configuration)
     setLoggerLevel(LoggerOutputLevel(NO_LOG_LEVEL-configuration.log_level));
 
     this->protocol = configuration.protocol;
-		memcpy ( server_address,configuration.server_address.c_str(),sizeof(server_address));
-		printf("Server address: %s\n",server_address);
-		// this->server_address = (const char *) configuration.server_address;
+		memcpy(server_address,configuration.server_address.c_str(),configuration.server_address.length());
 }
