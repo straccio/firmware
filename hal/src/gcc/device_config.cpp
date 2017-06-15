@@ -93,10 +93,10 @@ public:
             ("device_id,id", po::value<string>(&config.device_id), "the device ID")
             ("device_key,dk", po::value<string>(&config.device_key)->default_value("device_key.der"), "the filename containing the device private key")
             ("server_key,sk", po::value<string>(&config.server_key)->default_value("server_key.der"), "the filename containing the server public key")
+            ("server_address,sa", po::value<string>(&config.server_address)->default_value("localhost"), "the cloud server host name or ip")
             ("state,s", po::value<string>(&config.periph_directory)->default_value("state"), "the directory where device state and peripherals is stored")
-			("protocol,p", po::value<ProtocolFactory>(&config.protocol)->default_value(PROTOCOL_LIGHTSSL), "the cloud communication protocol to use")
-			;
-
+            ("protocol,p", po::value<ProtocolFactory>(&config.protocol)->default_value(PROTOCOL_LIGHTSSL), "the cloud communication protocol to use")
+        ;
         command_line_options.add(program_options).add(device_options);
 
         po::options_description config_file_options;
@@ -183,6 +183,7 @@ bool read_device_config(int argc, char* argv[])
     }
 
     deviceConfig.read(parser.config);
+
     return true;
 }
 
@@ -198,10 +199,13 @@ void DeviceConfig::read(Configuration& configuration)
 
     read_file(configuration.device_key.c_str(), device_key, sizeof(device_key));
     read_file(configuration.server_key.c_str(), server_key, sizeof(server_key));
+		// read_file(configuration.server_address.c_str(), server_address, sizeof(server_address));
 #endif
 
     setLoggerLevel(LoggerOutputLevel(NO_LOG_LEVEL-configuration.log_level));
 
     this->protocol = configuration.protocol;
+		memcpy ( server_address,configuration.server_address.c_str(),sizeof(server_address));
+		printf("Server address: %s\n",server_address);
+		// this->server_address = (const char *) configuration.server_address;
 }
-

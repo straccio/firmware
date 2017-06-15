@@ -104,6 +104,8 @@ void parseServerAddressData(ServerAddress* server_addr, uint8_t* buf)
       server_addr->addr_type = IP_ADDRESS;
       server_addr->ip = (buf[2] << 24) | (buf[3] << 16) |
                         (buf[4] << 8)  |  buf[5];
+
+                        printf("IP Server: \n");
       break;
 
     case DOMAIN_NAME:
@@ -137,14 +139,20 @@ void parseServerAddressData(ServerAddress* server_addr, uint8_t* buf)
 void HAL_FLASH_Read_ServerAddress(ServerAddress* server_addr)
 {
 	memset(server_addr, 0, sizeof(ServerAddress));
-	int offset = HAL_Feature_Get(FEATURE_CLOUD_UDP) ? SERVER_ADDRESS_OFFSET_EC : SERVER_ADDRESS_OFFSET;
-    parseServerAddressData(server_addr, deviceConfig.server_key+offset);
+  server_addr->addr_type=DOMAIN_NAME;
+  memcpy(server_addr->domain,deviceConfig.server_address,strlen((const char*)deviceConfig.server_address));
+  INFO("Server Address: %s", server_addr->domain);
+	// int offset = HAL_Feature_Get(FEATURE_CLOUD_UDP) ? SERVER_ADDRESS_OFFSET_EC : SERVER_ADDRESS_OFFSET;
+  //   parseServerAddressData(server_addr, deviceConfig.server_key+offset);
+  //   printf("Cloud Server: %s\n",(char*)server_addr);
 }
 
 void HAL_FLASH_Write_ServerAddress(const uint8_t *buf, bool udp)
 {
-    int offset = (udp) ? SERVER_ADDRESS_OFFSET_EC : SERVER_ADDRESS_OFFSET;
-    memcpy(&deviceConfig.server_key+offset, buf, SERVER_ADDRESS_SIZE);
+  return;
+    // int offset = (udp) ? SERVER_ADDRESS_OFFSET_EC : SERVER_ADDRESS_OFFSET;
+    // memcpy(&deviceConfig.server_key+offset, buf, SERVER_ADDRESS_SIZE);
+
 }
 
 bool HAL_OTA_Flashed_GetStatus(void)
@@ -188,4 +196,3 @@ int HAL_FLASH_Read_CorePrivateKey(uint8_t *keyBuffer, private_key_generation_t* 
 extern "C" void random_seed_from_cloud(unsigned int value)
 {
 }
-
