@@ -9,9 +9,10 @@ int inet_gethostbyname(const char* hostname, uint16_t hostnameLen, HAL_IPAddress
         network_interface_t nif, void* reserved)
 {
     out_ip_addr->ipv4 = 0;
+    boost::system::error_code ec;
     ip::tcp::resolver resolver(device_io_service);
     ip::tcp::resolver::query query(hostname, "");
-    for(ip::tcp::resolver::iterator i = resolver.resolve(query);
+    for(ip::tcp::resolver::iterator i = resolver.resolve(query,ec);
                             i != ip::tcp::resolver::iterator();
                             ++i)
     {
@@ -21,6 +22,11 @@ int inet_gethostbyname(const char* hostname, uint16_t hostnameLen, HAL_IPAddress
             ip::address_v4 addr_v4 = addr.to_v4();
             out_ip_addr->ipv4 = addr_v4.to_ulong();
         }
+    }
+    if(ec){
+      return 1;
+    }else{
+      return 0;
     }
     return 0;
 }
