@@ -39,6 +39,10 @@ DeviceConfig deviceConfig;
 const char* CMD_HELP = "help";
 const char* CMD_VERSION = "version";
 
+#if defined(PARTICLE_GCC_CUSTOM_OPTIONS)
+extern void addCustomDeviceOptions(po::options_description *device_options);
+#endif
+
 std::istream& operator>>(std::istream& in, ProtocolFactory& pf)
 {
 	string value;
@@ -93,10 +97,15 @@ public:
             ("device_id,id", po::value<string>(&config.device_id), "the device ID")
             ("device_key,dk", po::value<string>(&config.device_key)->default_value("device_key.der"), "the filename containing the device private key")
             ("server_key,sk", po::value<string>(&config.server_key)->default_value("server_key.der"), "the filename containing the server public key")
-            ("server_address,sa", po::value<string>(&config.server_address)->default_value("localhost"), "the cloud server host name or ip")
+            ("server_address,a", po::value<string>(&config.server_address)->default_value("localhost"), "the cloud server host name or ip")
             ("state,s", po::value<string>(&config.periph_directory)->default_value("state"), "the directory where device state and peripherals is stored")
             ("protocol,p", po::value<ProtocolFactory>(&config.protocol)->default_value(PROTOCOL_LIGHTSSL), "the cloud communication protocol to use")
         ;
+#if defined(PARTICLE_GCC_CUSTOM_OPTIONS)
+				if(addCustomDeviceOptions != nullptr){
+					addCustomDeviceOptions(&device_options);
+				}
+#endif
         command_line_options.add(program_options).add(device_options);
 
         po::options_description config_file_options;

@@ -21,7 +21,7 @@ ASFLAGS +=  -g3
 
 
 ifeq ("$(MAKE_OS)", "LINUX")
-LDFLAGS +=  -pthread
+LDFLAGS +=  -pthread -Xlinker --gc-sections
 endif
 
 ifneq ($(MAKE_OS),OSX)

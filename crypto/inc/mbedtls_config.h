@@ -1332,6 +1332,14 @@
 //#define MBEDTLS_X509_RSASSA_PSS_SUPPORT
 
 /**
+ * \def MBEDTLS_X509_INFO_SUPPORT
+ *
+ * Enable mbedtls_x509_crt_info and mbedtls_x509_crt_verify_info functions
+ *
+ */
+// #define MBEDTLS_X509_INFO_SUPPORT
+
+/**
  * \def MBEDTLS_SSL_RAW_PUBLIC_KEY_SUPPORT
  *
  * Enable parsing and verification of raw public keys,
@@ -2535,9 +2543,10 @@
 #include MBEDTLS_USER_CONFIG_FILE
 #endif
 
-#if PLATFORM_ID != 3
+#if !(PLATFORM_ID == 3 && defined(__clang__))
 #include "mbedtls_weaken.h"
-#endif
+#endif // !(PLATFORM_ID == 3 && defined(__clang__))
+
 #endif /* MBEDTLS_CONFIG_H */
 
 #endif // PLATFORM_ID == 6 || PLATFORM_ID == 8

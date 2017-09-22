@@ -5,7 +5,9 @@ current_dir := $(patsubst %/,%,$(dir $(mkfile_path)))
 
 include $(current_dir)/top-level-module.mk
 
-
+ifeq ("$(PLATFORM_ID)","3")
+include $(current_dir)/gcc-tools.mk
+else
 ifeq ("$(ARCH)","arm")
 include $(current_dir)/arm-tools.mk
 else
@@ -13,6 +15,7 @@ ifeq ("$(ARCH)","gcc")
 include $(current_dir)/gcc-tools.mk
 else
 $(error "Unknown architecture '$(ARCH)'");
+endif
 endif
 endif
 
