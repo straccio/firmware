@@ -187,8 +187,8 @@ int os_mutex_recursive_unlock(os_mutex_recursive_t mutex);
 // Binary semaphores
 int os_semaphore_create(os_semaphore_t* semaphore, unsigned max_count, unsigned initial_count);
 int os_semaphore_destroy(os_semaphore_t semaphore);
-int os_semaphore_take(os_semaphore_t semaphore, system_tick_t timeout, bool reserved);
-int os_semaphore_give(os_semaphore_t semaphore, bool reserved);
+int os_semaphore_take(os_semaphore_t semaphore, system_tick_t timeout, bool reserved,void* reverved2);
+int os_semaphore_give(os_semaphore_t semaphore, bool reserved,void* reverved2);
 
 #define _GLIBCXX_HAS_GTHREADS
 #include <bits/gthr.h>

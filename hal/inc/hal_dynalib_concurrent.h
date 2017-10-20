@@ -61,6 +61,10 @@ DYNALIB_FN(24, hal_concurrent, os_queue_destroy, int(os_queue_t, void*))
 DYNALIB_FN(25, hal_concurrent, os_queue_put, int(os_queue_t, const void* item, system_tick_t, void*))
 DYNALIB_FN(26, hal_concurrent, os_queue_take, int(os_queue_t, void* item, system_tick_t, void*))
 DYNALIB_FN(27, hal_concurrent, os_thread_exit, os_result_t(os_thread_t))
+//int os_semaphore_take(os_semaphore_t semaphore, system_tick_t timeout, bool reserved);
+DYNALIB_FN(28,hal_concurrent,os_semaphore_take,int(os_semaphore_t semaphore, system_tick_t timeout, bool reserved,void*))
+// int os_semaphore_give(os_semaphore_t semaphore, bool reserved);
+DYNALIB_FN(29,hal_concurrent,os_semaphore_give,int(os_semaphore_t semaphore, bool reserved,void*))
 #endif // PLATFORM_THREADING
 
 DYNALIB_END(hal_concurrent)
@@ -68,4 +72,3 @@ DYNALIB_END(hal_concurrent)
 
 
 #endif	/* HAL_DYNALIB_CONCURRENT_H */
-

@@ -142,7 +142,7 @@ protected:
 
     void wait_complete()
     {
-        os_semaphore_take(complete, CONCURRENT_WAIT_FOREVER, false);
+        os_semaphore_take(complete, CONCURRENT_WAIT_FOREVER, false,nullptr);
     }
 
 public:
@@ -168,7 +168,7 @@ public:
 
     inline void task_complete()
     {
-        os_semaphore_give(complete, false);
+        os_semaphore_give(complete, false,nullptr);
     }
 
 };
