@@ -36,6 +36,7 @@ user/tests/unit/obj/*
 .cproject
 .project
 .DS_Store
+.idea
 
 # Raisonance RIDE Project
 RIDE/*
