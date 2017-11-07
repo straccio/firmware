@@ -103,10 +103,10 @@ typedef enum diag_service_cmd {
     DIAG_SERVICE_CMD_START = 2 // Start the service
 } diag_service_cmd;
 
-typedef struct diag_source diag_source;
+//typedef struct diag_source diag_source;
 
-typedef int(*diag_source_cmd_callback)(const diag_source* src, int cmd, void* data);
-typedef int(*diag_enum_sources_callback)(const diag_source* src, void* data);
+//typedef int(*diag_source_cmd_callback)(const diag_source* src, int cmd, void* data);
+//typedef int(*diag_enum_sources_callback)(const diag_source* src, void* data);
 
 typedef struct diag_source {
     uint16_t size; // Size of this structure
@@ -115,8 +115,12 @@ typedef struct diag_source {
     uint16_t type; // Data type
     const char* name; // Source name
     void* data; // User data
-    diag_source_cmd_callback callback; // Source callback
+    int(*callback)(const struct diag_source* src, int cmd, void* data) ;
+//    diag_source_cmd_callback callback; // Source callback
 } diag_source;
+
+typedef int(*diag_source_cmd_callback)(const diag_source* src, int cmd, void* data);
+typedef int(*diag_enum_sources_callback)(const diag_source* src, void* data);
 
 typedef struct diag_source_get_cmd_data {
     uint16_t size; // Size of this structure
