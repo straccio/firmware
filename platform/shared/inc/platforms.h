@@ -36,5 +36,7 @@
 #define PLATFORM_ELECTRON_PRODUCTION        10
 #define PLATFORM_NEWHAL                     60000
 
+#define PLATFORM_NUCLEO-F429ZI              6144
+
 #endif	/* PLATFORMS_H */
 
