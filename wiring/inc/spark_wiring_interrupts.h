@@ -75,6 +75,20 @@ public:
 
 #define ATOMIC_BLOCK() 	for (bool __todo=true; __todo;) for (AtomicSection __as; __todo; __todo=false)
 
+namespace particle {
 
+// Class implementing a concurrency policy based on critical sections
+class AtomicConcurrency {
+public:
+    int lock() const {
+        return HAL_disable_irq();
+    }
+
+    void unlock(int state) const {
+        HAL_enable_irq(state);
+    }
+};
+
+} // namespace particle
 
 #endif /* SPARK_WIRING_INTERRUPTS_H_ */
