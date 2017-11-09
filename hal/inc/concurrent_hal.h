@@ -23,7 +23,7 @@
 
 #ifndef CONCURRENCY_HAL_H
 #define	CONCURRENCY_HAL_H
-
+#if PLATFORM_THREADING
 #include "system_tick_hal.h"
 #include <stdint.h>
 #include <stddef.h>
@@ -231,5 +231,5 @@ int os_timer_is_active(os_timer_t timer, void* reserved);
 }
 #endif
 
-
+#endif
 #endif	/* CONCURRENCY_HAL_H */

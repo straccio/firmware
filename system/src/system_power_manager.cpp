@@ -9,7 +9,7 @@ LOG_SOURCE_CATEGORY("sys.power")
 #include "debug.h"
 #include "spark_wiring_platform.h"
 #include "pinmap_hal.h"
-
+#if PLATFORM_ID == 10
 #if Wiring_Cellular == 1
 
 using namespace particle::power;
@@ -365,3 +365,4 @@ void PowerManager::logStat(uint8_t stat, uint8_t fault) {
 }
 
 #endif /* Wiring_Cellular == 1 */
+#endif
