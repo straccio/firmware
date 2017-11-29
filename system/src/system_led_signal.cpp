@@ -316,34 +316,65 @@ private:
     }
 };
 
+#if PLATFORM_ID!=3
 LEDSignalManager ledSignalManager;
+#endif
 
 } // namespace
 
 int led_start_signal(int signal, uint8_t priority, int flags, void* reserved) {
+#if PLATFORM_ID==3
+	return 0;
+#else
     return (ledSignalManager.start(signal, priority, flags) ? 0 : 1);
+#endif
 }
 
 void led_stop_signal(int signal, int flags, void* reserved) {
+#if PLATFORM_ID!=3
     ledSignalManager.stop(signal, flags);
+#endif
 }
 
 int led_signal_started(int signal, void* reserved) {
+#if PLATFORM_ID==3
+	return 0;
+#else
     return (ledSignalManager.isStarted(signal) ? 1 : 0);
+#endif
 }
 
 int led_set_signal_theme(const LEDSignalThemeData* theme, int flags, void* reserved) {
+#if PLATFORM_ID==3
+	return 0;
+#else
+
     return (ledSignalManager.setTheme(theme, flags) ? 0 : 1);
+#endif
 }
 
 int led_get_signal_theme(LEDSignalThemeData* theme, int flags, void* reserved) {
+#if PLATFORM_ID==3
+	return 0;
+#else
+
     return (ledSignalManager.getTheme(theme, flags) ? 0 : 1);
+#endif
 }
 
 const LEDStatusData* led_signal_status(int signal, void* reserved) {
+#if PLATFORM_ID==3
+	return 0;
+#else
     return ledSignalManager.signalStatus(signal);
+#endif
 }
 
 uint16_t led_pattern_period(int pattern, int speed, void* reserved) {
+//#if PLATFORM_ID==3
+//	return 0;
+//#else
+
     return patternPeriod(pattern, speed);
+//#endif
 }
