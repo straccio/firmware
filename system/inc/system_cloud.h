@@ -197,9 +197,11 @@ ProtocolFacade* system_cloud_protocol_instance(void);
 
 int spark_set_connection_property(unsigned property_id, unsigned data, void* datap, void* reserved);
 
+
 #ifndef SPARK_BUF_LEN
 #define SPARK_BUF_LEN			        600
 #endif
+int spark_set_random_seed_from_cloud_handler(void (*handler)(unsigned int), void* reserved);
 
 extern const unsigned char backup_udp_public_server_key[91];
 extern const unsigned char backup_udp_public_server_address[22];

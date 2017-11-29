@@ -1,6 +1,9 @@
 #include "system_power.h"
 #include <cstdint>
 #if PLATFORM_ID == 10
+#include "system_tick_hal.h"
+#include "concurrent_hal.h"
+
 namespace particle { namespace power {
 
 static const uint16_t DEFAULT_INPUT_CURRENT_LIMIT = 900;
