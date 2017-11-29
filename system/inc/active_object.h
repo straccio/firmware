@@ -338,7 +338,7 @@ protected:
         return cpp::select().recv_only(_channel, item).try_once();
     }
 
-    virtual bool put(const Item& item) override
+    virtual bool put(Item& item) override
     {
         _channel.send(item);
         return true;

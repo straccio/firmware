@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstdint>
+#include <csignal>
 #include <iostream>
 #include "filesystem.h"
 #include "service_debug.h"
@@ -39,11 +40,16 @@
 #include <boost/crc.hpp>  // for boost::crc_32_type
 #include <sstream>
 #include <iomanip>
+#include <thread>
 
 #include "eeprom_file.h"
 #include "eeprom_hal.h"
 
+const auto graceful_exit_time = std::chrono::seconds(3);
+
+//using std::cerr;
 using std::cout;
+extern void signal_handler(int signal);
 
 static LoggerOutputLevel log_level = NO_LOG_LEVEL;
 
@@ -129,8 +135,26 @@ void core_log(const char* msg, ...)
 
 const char* eeprom_bin = "eeprom.bin";
 
+void quit_forcefully(int signal) {
+    INFO("Force quitting");
+    //restorePins();
+    // Exit by resending the terminate signal
+    std::signal(signal, SIG_DFL);
+    std::raise(signal);
+}
+
+void quit_gracefully(int signal) {
+    INFO("Stopping main loop()");
+    // Terminal main app loop
+    signal_handler(signal);
+    // Pressing Ctrl-C a second time quits forcefully
+    std::signal(signal, quit_forcefully);
+}
+
 extern "C" int main(int argc, char* argv[])
 {
+    std::signal(SIGINT, quit_gracefully);
+    std::signal(SIGTERM, quit_forcefully);
     log_set_callbacks(log_message_callback, log_write_callback, log_enabled_callback, nullptr);
     if (read_device_config(argc, argv)) {
     		// init the eeprom so that a file of size 0 can be used to trigger the save.

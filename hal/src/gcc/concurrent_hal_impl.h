@@ -1,14 +1,35 @@
-#pragma once
+#ifndef CONCURRENT_HAL_IMPL_H
+#define	CONCURRENT_HAL_IMPL_H
+#if PLATFORM_THREADING
+#ifdef	__cplusplus
+extern "C" {
+#endif
 
-// redefine these for the underlying concurrency primitives available in the RTOS
+// Alias thread primitive to the HAL definitions
 
-typedef int os_result_t;
-typedef int os_thread_prio_t;
 typedef void* os_thread_t;
-typedef void*os_timer_t;
-typedef void*os_queue_t;
-typedef void*os_mutex_t;
-typedef void* condition_variable_t;
-typedef void* os_semaphore_t;
+typedef int32_t os_result_t;
+typedef uint8_t os_thread_prio_t;
+/* No thread priorities */
+const os_thread_prio_t OS_THREAD_PRIORITY_DEFAULT = 0;
+const os_thread_prio_t OS_THREAD_PRIORITY_CRITICAL = 0;
+/* No stack size override */
+const size_t OS_THREAD_STACK_SIZE_DEFAULT = 0;
+
+typedef void* os_mutex_t;
 typedef void* os_mutex_recursive_t;
-typedef uintptr_t os_unique_id_t;
+typedef void* condition_variable_t;
+typedef void* os_timer_t;
+
+/**
+ * Alias for a queue handle - all handles are pointers.
+ */
+typedef void* os_queue_t;
+typedef void* os_semaphore_t;
+
+#ifdef	__cplusplus
+}
+#endif
+#endif
+#endif	/* CONCURRENT_HAL_IMPL_H */
+

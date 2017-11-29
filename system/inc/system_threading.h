@@ -30,7 +30,7 @@ extern ISRTaskQueue SystemISRTaskQueue;
 #include <mutex>
 #include <future>
 
-#ifndef PARTICLE_GTHREAD_INCLUDED
+#if EMBEDDED_TARGET == 1 && !defined(PARTICLE_GTHREAD_INCLUDED)
 #error "GTHREAD header not included. This is required for correct mutex implementation on embedded platforms."
 #endif
 
