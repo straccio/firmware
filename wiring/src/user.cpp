@@ -91,7 +91,9 @@ void serialEvent5() __attribute__((weak));
 
 void _post_loop()
 {
+#if PLATFORM_ID != 3
 	serialEventRun();
+#endif
 	application_checkin();
 }
 

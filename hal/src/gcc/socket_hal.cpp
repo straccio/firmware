@@ -322,6 +322,9 @@ sock_result_t socket_receivefrom(sock_handle_t sock, void* buffer, socklen_t buf
 	auto& socket = udp_from(sock);
 
 	int count = socket.receive_from(boost::asio::buffer(buffer, bufLen), endpoint, 0, ec);
+	if(count>0){
+		DEBUG("pippo");
+	}
 	if (addr && addrsize && *addrsize>=6u) {
 		uint16_t port = endpoint.port();
 		addr->sa_data[0] = port >> 8;
@@ -441,8 +444,9 @@ sock_handle_t socket_create(uint8_t family, uint8_t type, uint8_t protocol, uint
         if (result)				// error
             return result;
 
-        std::string address_mcast = "224.0.0.251";
-        boost::asio::ip::address mcast_addr = boost::asio::ip::address::from_string(address_mcast, ec);
+        //std::string address_mcast = "224.0.0.251";
+				// std::string address_mcast = "0.0.0.0";
+        boost::asio::ip::address_v4 mcast_addr(nif);//= boost::asio::ip::address::from_string(address_mcast, ec);
         boost::asio::ip::udp::endpoint listen_endpoint(mcast_addr, port);
         socket.open(listen_endpoint.protocol(), ec);
 
@@ -493,8 +497,9 @@ sock_result_t socket_join_multicast(const HAL_IPAddress* addr, network_interface
 		{
 			auto& s = udp_from(socket);
 			ip::address_v4 address(addr->ipv4);
+
 			DEBUG("join multicast %s", address.to_string().c_str());
-			s.set_option(ip::multicast::enable_loopback(true));
+//			s.set_option(ip::multicast::enable_loopback(true));
 			boost::asio::ip::multicast::join_group option(address);
 			s.set_option(option);
 			return 0;

@@ -453,7 +453,11 @@ public:
 
     bool ready() override
     {
+      #if PLATFORM_ID==3
+      return true;
+      #else
         return (SPARK_WLAN_STARTED && WLAN_CONNECTED);
+      #endif
     }
 
     bool connecting() override
