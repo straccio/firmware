@@ -298,6 +298,10 @@ CFLAGS += -DSTM32_DEVICE
 CFLAGS += -D$(STM32_DEVICE)
 endif
 
+ifneq ("$(SPARK_NO_PLATFORM)","")
+CFLAGS += -DSPARK_NO_PLATFORM
+endif
+
 ifeq ("$(PRODUCT_ID)","")
 # ifeq (,$(submake))
 # $(info PRODUCT_ID not defined - using default: $(DEFAULT_PRODUCT_ID))
