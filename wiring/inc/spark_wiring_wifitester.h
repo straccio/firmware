@@ -26,7 +26,8 @@
 
 #include "system_setup.h"
 #include "spark_wiring_startup.h"
-
+#ifndef __SPARK_WIRING_WIFITESTER_H
+#define __SPARK_WIRING_WIFITESTER_H
 #ifdef __cplusplus
 
 class WiFiTester
@@ -70,3 +71,4 @@ public:
 #endif /* __cplusplus */
 
 #endif  /* WIFITESTER_H */
+#endif
