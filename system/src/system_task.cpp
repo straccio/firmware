@@ -298,8 +298,20 @@ void establish_cloud_connection()
 
 #if PLATFORM_ID==PLATFORM_ELECTRON_PRODUCTION
         const CellularNetProvData provider_data = cellular_network_provider_data_get(NULL);
-        CLOUD_FN(spark_set_connection_property(particle::protocol::Connection::PING, (provider_data.keepalive * 1000), nullptr, nullptr), (void)0);
+        particle::protocol::connection_properties_t conn_prop = {0};
+        conn_prop.size = sizeof(conn_prop);
+        conn_prop.keepalive_source = particle::protocol::KeepAliveSource::SYSTEM;
+        CLOUD_FN(spark_set_connection_property(particle::protocol::Connection::PING, (provider_data.keepalive * 1000), &conn_prop, nullptr), (void)0);
         spark_cloud_udp_port_set(provider_data.port);
+
+        CellularDevice device;
+        memset(&device, 0, sizeof(device));
+        device.size = sizeof(device);
+        cellular_device_info(&device, NULL);
+        if (device.dev == 8/*DEV_SARA_R410*/) {
+            DEBUG("Device is SARA_R410, disabling Fast OTA!");
+            CLOUD_FN(spark_set_connection_property(particle::protocol::Connection::FAST_OTA, 0/*disabled*/, nullptr, nullptr), (void)0);
+        }
 #endif
         INFO("Cloud: connecting");
         const auto diag = CloudDiagnostics::instance();

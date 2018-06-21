@@ -152,6 +152,14 @@ typedef struct spark_variable_t
     const void* (*update)(const char* nane, Spark_Data_TypeDef type, const void* var, void* reserved);
 } spark_variable_t;
 
+/**
+ * @brief Register a new variable.
+ * @param varKey	The name of the variable. The length should be between 1 and USER_VAR_KEY_LENGTH bytes.
+ * @param userVar	A pointer to the memory for the variable.
+ * @param userVarType	The type of the variable.
+ * @param extra		Additional registration details.
+ * 		update	A function used to case a variable value to be computed. If defined, this is called when the variable's value is retrieved.
+ */
 bool spark_variable(const char *varKey, const void *userVar, Spark_Data_TypeDef userVarType, spark_variable_t* extra);
 
 /**
@@ -198,7 +206,7 @@ bool spark_cloud_flag_auto_connect(void);
 
 ProtocolFacade* system_cloud_protocol_instance(void);
 
-int spark_set_connection_property(unsigned property_id, unsigned data, void* datap, void* reserved);
+int spark_set_connection_property(unsigned property_id, unsigned data, particle::protocol::connection_properties_t* conn_prop, void* reserved);
 
 
 #ifndef SPARK_BUF_LEN
@@ -233,56 +241,48 @@ extern const unsigned char backup_tcp_public_server_address[18];
 #endif
 #endif
 
+#if PLATFORM_ID!=3
+  #define USER_VAR_MAX_COUNT            (10)  // FIXME: NOT USED
+  #define USER_FUNC_MAX_COUNT           (4)   // FIXME: NOT USED
+#endif
+
 #if PLATFORM_ID==3
-#ifndef USER_VAR_MAX_COUNT
-#define USER_VAR_MAX_COUNT		        512
-#endif
-#ifndef USER_VAR_KEY_LENGTH
-#define USER_VAR_KEY_LENGTH		        20
-#endif
+  #ifndef USER_VAR_MAX_COUNT
+    #define USER_VAR_MAX_COUNT		        512
+  #endif
+  #ifndef USER_VAR_KEY_LENGTH
+    #define USER_VAR_KEY_LENGTH		        20
+  #endif
 
-#ifndef USER_FUNC_MAX_COUNT
-#define USER_FUNC_MAX_COUNT		        8
-#endif
-#ifndef USER_FUNC_KEY_LENGTH
-#define USER_FUNC_KEY_LENGTH		        12
-#endif
-#ifndef USER_FUNC_ARG_LENGTH
-#define USER_FUNC_ARG_LENGTH		        64
-#endif
+  #ifndef USER_FUNC_MAX_COUNT
+    #define USER_FUNC_MAX_COUNT		        8
+  #endif
+  #ifndef USER_FUNC_KEY_LENGTH
+    #define USER_FUNC_KEY_LENGTH		        12
+  #endif
+  #ifndef USER_FUNC_ARG_LENGTH
+    #define USER_FUNC_ARG_LENGTH		        64
+  #endif
 
-#ifndef USER_EVENT_NAME_LENGTH
-#define USER_EVENT_NAME_LENGTH		        128
-#endif
-#ifndef USER_EVENT_DATA_LENGTH
-#define USER_EVENT_DATA_LENGTH		        128
-#endif
+  #ifndef USER_EVENT_NAME_LENGTH
+    #define USER_EVENT_NAME_LENGTH		        128
+  #endif
+  #ifndef USER_EVENT_DATA_LENGTH
+    #define USER_EVENT_DATA_LENGTH		        128
+  #endif
 
+#elif PLATFORM_ID<2
+    #define USER_FUNC_ARG_LENGTH      (64)  // FIXME: NOT USED
+    #define USER_VAR_KEY_LENGTH       (12)
+    #define USER_FUNC_KEY_LENGTH      (12)
+    #define USER_EVENT_NAME_LENGTH    (64)  // FIXME: NOT USED
+    #define USER_EVENT_DATA_LENGTH    (64)  // FIXME: NOT USED
 #else
-
-#ifndef USER_VAR_MAX_COUNT
-#define USER_VAR_MAX_COUNT		        10
-#endif
-#ifndef USER_VAR_KEY_LENGTH
-#define USER_VAR_KEY_LENGTH		        12
-#endif
-
-#ifndef USER_FUNC_MAX_COUNT
-#define USER_FUNC_MAX_COUNT		        4
-#endif
-#ifndef USER_FUNC_KEY_LENGTH
-#define USER_FUNC_KEY_LENGTH		        12
-#endif
-#ifndef USER_FUNC_ARG_LENGTH
-#define USER_FUNC_ARG_LENGTH		        64
-#endif
-
-#ifndef USER_EVENT_NAME_LENGTH
-#define USER_EVENT_NAME_LENGTH		        64
-#endif
-#ifndef USER_EVENT_DATA_LENGTH
-#define USER_EVENT_DATA_LENGTH		        64
-#endif
+    #define USER_FUNC_ARG_LENGTH      (622) // FIXME: NOT USED
+    #define USER_VAR_KEY_LENGTH       (64)
+    #define USER_FUNC_KEY_LENGTH      (64)
+    #define USER_EVENT_NAME_LENGTH    (64)  // FIXME: NOT USED
+    #define USER_EVENT_DATA_LENGTH    (622) // FIXME: NOT USED
 #endif
 
 #ifdef __cplusplus
