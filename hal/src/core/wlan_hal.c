@@ -75,6 +75,8 @@ unsigned char NVMEM_Spark_File_Data[NVMEM_SPARK_FILE_SIZE];
 
 void recreate_spark_nvmem_file();
 
+void Clear_NetApp_Dhcp();
+
 
 int wlan_clear_credentials()
 {
@@ -550,6 +552,17 @@ void wlan_set_ipaddress_source(IPAddressSource source, bool persist, void* reser
 void wlan_set_ipaddress(const HAL_IPAddress* device, const HAL_IPAddress* netmask,
         const HAL_IPAddress* gateway, const HAL_IPAddress* dns1, const HAL_IPAddress* dns2, void* reserved)
 {
+}
+
+IPAddressSource wlan_get_ipaddress_source(void* reserved)
+{
+    return DYNAMIC_IP;
+}
+
+int wlan_get_ipaddress(IPConfig* conf, void* reserved)
+{
+    // Unsupported
+    return -1;
 }
 
 typedef struct CC3000ScanResult {

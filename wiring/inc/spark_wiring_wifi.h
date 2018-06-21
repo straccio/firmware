@@ -139,7 +139,7 @@ public:
     }
 
     void disconnect(void) {
-        network_disconnect(*this, 0, NULL);
+        network_disconnect(*this, NETWORK_DISCONNECT_REASON_USER, NULL);
     }
 
     bool connecting(void) {
@@ -225,10 +225,14 @@ public:
         return wlan_select_antenna(antenna);
     }
 
+    WLanSelectAntenna_TypeDef getAntenna() {
+        return wlan_get_antenna(nullptr);
+    }
+
     IPAddress resolve(const char* name)
     {
-        HAL_IPAddress ip;
-        return (inet_gethostbyname(name, strlen(name), &ip, *this, NULL)<0) ?
+        HAL_IPAddress ip = {};
+        return (inet_gethostbyname(name, strlen(name), &ip, *this, NULL) != 0) ?
                 IPAddress(uint32_t(0)) : IPAddress(ip);
     }
 

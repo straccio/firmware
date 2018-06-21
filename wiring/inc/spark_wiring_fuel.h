@@ -50,12 +50,13 @@ namespace detail {
 }
 
 class FuelGauge {
-
-  public:
-
+public:
     FuelGauge(bool _lock = false);
+    FuelGauge(TwoWire& i2c, bool _lock = false);
     ~FuelGauge();
+
     boolean begin();
+
     float getVCell();
     float getSoC();
     float getNormalizedSoC();
@@ -73,12 +74,13 @@ class FuelGauge {
     bool lock();
     bool unlock();
 
-  private:
+private:
 
     void readConfigRegister(byte &MSB, byte &LSB);
     void readRegister(byte startAddress, byte &MSB, byte &LSB);
     void writeRegister(byte address, byte MSB, byte LSB);
 
+    TwoWire& i2c_;
     bool lock_;
 };
 

@@ -192,14 +192,11 @@ cellular_result_t cellular_signal(CellularSignalHal* signal, cellular_signal_t* 
 cellular_result_t cellular_command(_CALLBACKPTR_MDM cb, void* param,
                           system_tick_t timeout_ms, const char* format, ...)
 {
-    char buf[256];
     va_list args;
     va_start(args, format);
-    vsnprintf(buf, sizeof(buf), format, args);
+    const int ret = electronMDM.sendCommandWithArgs(format, args, cb, param, timeout_ms);
     va_end(args);
-    electronMDM.sendFormated(buf);
-
-    return electronMDM.waitFinalResp((MDMParser::_CALLBACKPTR)cb, (void*)param, timeout_ms);
+    return ret;
 }
 
 cellular_result_t _cellular_data_usage_set(CellularDataHal &data, const MDM_DataUsage &data_usage, bool ret)
@@ -305,7 +302,7 @@ cellular_result_t cellular_pause(void* reserved)
 
 cellular_result_t cellular_resume(void* reserved)
 {
-    electronMDM.resume();
+    electronMDM.resumeRecv();
     return 0;
 }
 
@@ -319,6 +316,24 @@ cellular_result_t cellular_imsi_to_network_provider(void* reserved)
 const CellularNetProvData cellular_network_provider_data_get(void* reserved)
 {
     return CELLULAR_NET_PROVIDER_DATA[cellularNetProv];
+}
+
+int cellular_lock(void* reserved)
+{
+    electronMDM.lock();
+    return 0;
+}
+
+void cellular_unlock(void* reserved)
+{
+    electronMDM.unlock();
+}
+
+void cellular_set_power_mode(int mode, void* reserved)
+{
+    if (mode >= 0 && mode <= 3) {
+        electronMDM.setPowerMode(mode);
+    }
 }
 
 #endif // !defined(HAL_CELLULAR_EXCLUDE)

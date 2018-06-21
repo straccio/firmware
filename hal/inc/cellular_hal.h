@@ -153,6 +153,23 @@ cellular_result_t cellular_imsi_to_network_provider(void* reserved);
  */
 const CellularNetProvData cellular_network_provider_data_get(void* reserved);
 
+/**
+ * Acquires the modem lock.
+ */
+int cellular_lock(void* reserved);
+
+/**
+ * Releases the modem lock.
+ */
+void cellular_unlock(void* reserved);
+
+/**
+ * Sets the power mode used, bound to 0-3.
+ *
+ * mode is volatile and will default to 1 on system reset/boot.
+ */
+void cellular_set_power_mode(int mode, void* reserved);
+
 #ifdef __cplusplus
 }
 #endif

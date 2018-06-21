@@ -403,7 +403,9 @@ int Spark_Send(const unsigned char *buf, uint32_t buflen, void* reserved)
     }
 
     // send returns negative numbers on error
-    int bytes_sent = socket_send(sparkSocket, buf, buflen);
+    /* Use hard-coded default 20s timeout here for now.
+     * Ideally it should come from communication library */
+    int bytes_sent = socket_send_ex(sparkSocket, buf, buflen, 0, 20000, nullptr);
     return bytes_sent;
 }
 
@@ -553,10 +555,12 @@ uint32_t compute_cloud_state_checksum(SparkAppStateSelector::Enum stateSelector,
 			update_persisted_state([](SessionPersistData& data){
 				data.describe_app_crc = compute_describe_app_checksum();
 			});
+            break;
 		case SparkAppStateSelector::DESCRIBE_SYSTEM:
 			update_persisted_state([](SessionPersistData& data){
 				data.describe_system_crc = compute_describe_system_checksum();
 			});
+            break;
 		}
 	}
 	else if (operation==SparkAppStateUpdate::PERSIST && stateSelector==SparkAppStateSelector::SUBSCRIPTIONS)
@@ -1104,8 +1108,13 @@ int spark_cloud_socket_connect()
     ip_address_error = determine_connection_address(ip_addr, port, server_addr, udp);
     if (!ip_address_error)
     {
-    		uint8_t local_port_offset = (PLATFORM_ID==3) ? 100 : 0;
-        sparkSocket = socket_create(AF_INET, udp ? SOCK_DGRAM : SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP, port+local_port_offset, NIF_DEFAULT);
+#if PLATFORM_ID == 3
+        // Use ephemeral port
+        uint16_t bport = 0;
+#else
+        uint16_t bport = port;
+#endif
+        sparkSocket = socket_create(AF_INET, udp ? SOCK_DGRAM : SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP, bport, NIF_DEFAULT);
         DEBUG("socketed udp=%d, sparkSocket=%d, %d", udp, sparkSocket, socket_handle_valid(sparkSocket));
     }
 
@@ -1232,7 +1241,7 @@ void HAL_NET_notify_socket_closed(sock_handle_t socket)
 {
     if (sparkSocket==socket)
     {
-        cloud_disconnect(false);
+        cloud_disconnect(false, false, CLOUD_DISCONNECT_REASON_ERROR);
     }
 }
 
@@ -1459,7 +1468,7 @@ bool system_cloud_active()
         if (SPARK_CLOUD_CONNECTED && ((now-lastCloudEvent))>SYSTEM_CLOUD_TIMEOUT)
         {
         	WARN("Disconnecting cloud due to inactivity! %d, %d", now, lastCloudEvent);
-        	cloud_disconnect(false);
+        	cloud_disconnect(false); // TODO: Do we need to specify a reason of the disconnection here?
             return false;
         }
     }

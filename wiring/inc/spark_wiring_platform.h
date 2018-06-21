@@ -159,4 +159,3 @@
 #endif
 
 #endif	/* SPARK_WIRING_PLATFORM_H */
-

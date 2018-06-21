@@ -54,6 +54,8 @@
 #include "deviceid_hal.h"
 #include "pinmap_impl.h"
 #include "ota_module.h"
+#include "hal_event.h"
+#include "system_error.h"
 
 #if PLATFORM_ID==PLATFORM_P1
 #include "wwd_management.h"
@@ -331,6 +333,8 @@ void HAL_Core_Config(void)
 
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_BKPSRAM, ENABLE);
 
+    /* Disable WKP pin */
+    PWR_WakeUpPinCmd(DISABLE);
 
     //Wiring pins default to inputs
 #if !defined(USE_SWD_JTAG) && !defined(USE_SWD)
@@ -598,10 +602,34 @@ void HAL_Core_Enter_Safe_Mode(void* reserved)
     HAL_Core_System_Reset_Ex(RESET_REASON_SAFE_MODE, 0, NULL);
 }
 
-void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long seconds)
+int32_t HAL_Core_Enter_Stop_Mode_Ext(const uint16_t* pins, size_t pins_count, const InterruptMode* mode, size_t mode_count, long seconds, void* reserved)
 {
-    if (!((wakeUpPin < TOTAL_PINS) && (wakeUpPin >= 0) && (edgeTriggerMode <= FALLING)) && seconds <= 0)
-        return;
+    // Initial sanity check
+    if ((pins_count == 0 || mode_count == 0 || pins == NULL || mode == NULL) && seconds <= 0) {
+        return SYSTEM_ERROR_NOT_ALLOWED;
+    }
+
+    // Validate pins and modes
+    if ((pins_count > 0 && pins == NULL) || (pins_count > 0 && mode_count == 0) || (mode_count > 0 && mode == NULL)) {
+        return SYSTEM_ERROR_NOT_ALLOWED;
+    }
+
+    for (unsigned i = 0; i < pins_count; i++) {
+        if (pins[i] >= TOTAL_PINS) {
+            return SYSTEM_ERROR_NOT_ALLOWED;
+        }
+    }
+
+    for (unsigned i = 0; i < mode_count; i++) {
+        switch(mode[i]) {
+            case RISING:
+            case FALLING:
+            case CHANGE:
+                break;
+            default:
+                return SYSTEM_ERROR_NOT_ALLOWED;
+        }
+    }
 
     SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
 
@@ -624,9 +652,10 @@ void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long
     // Suspend all EXTI interrupts
     HAL_Interrupts_Suspend();
 
-    /* Configure EXTI Interrupt : wake-up from stop mode using pin interrupt */
-    if ((wakeUpPin < TOTAL_PINS) && (edgeTriggerMode <= FALLING))
-    {
+    for (unsigned i = 0; i < pins_count; i++) {
+        pin_t wakeUpPin = pins[i];
+        InterruptMode edgeTriggerMode = (i < mode_count) ? mode[i] : mode[mode_count - 1];
+
         PinMode wakeUpPinMode = INPUT;
         /* Set required pinMode based on edgeTriggerMode */
         switch(edgeTriggerMode)
@@ -679,12 +708,24 @@ void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long
 
     HAL_Core_Execute_Stop_Mode();
 
+    int32_t reason = SYSTEM_ERROR_UNKNOWN;
+
     if (exit_conditions & STOP_MODE_EXIT_CONDITION_PIN) {
-        /* Detach the Interrupt pin */
-        HAL_Interrupts_Detach_Ext(wakeUpPin, 1, NULL);
+        STM32_Pin_Info* PIN_MAP = HAL_Pin_Map();
+        for (unsigned i = 0; i < pins_count; i++) {
+            pin_t wakeUpPin = pins[i];
+            if (EXTI_GetITStatus(PIN_MAP[wakeUpPin].gpio_pin) != RESET) {
+                reason = i + 1;
+            }
+            /* Detach the Interrupt pin */
+            HAL_Interrupts_Detach_Ext(wakeUpPin, 1, NULL);
+        }
     }
 
     if (exit_conditions & STOP_MODE_EXIT_CONDITION_RTC) {
+        if (NVIC_GetPendingIRQ(RTC_Alarm_IRQn)) {
+            reason = 0;
+        }
         // No need to detach RTC Alarm from EXTI, since it will be detached in HAL_Interrupts_Restore()
 
         // RTC Alarm should be canceled to avoid entering HAL_RTCAlarm_Handler or if we were woken up by pin
@@ -700,6 +741,14 @@ void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long
     SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
 
     HAL_USB_Attach();
+
+    return reason;
+}
+
+void HAL_Core_Enter_Stop_Mode(uint16_t wakeUpPin, uint16_t edgeTriggerMode, long seconds)
+{
+    InterruptMode m = (InterruptMode)edgeTriggerMode;
+    HAL_Core_Enter_Stop_Mode_Ext(&wakeUpPin, 1, &m, 1, seconds, NULL);
 }
 
 void HAL_Core_Execute_Stop_Mode(void)
@@ -733,7 +782,7 @@ void HAL_Core_Execute_Stop_Mode(void)
     while(RCC_GetSYSCLKSource() != 0x08);
 }
 
-void HAL_Core_Enter_Standby_Mode(uint32_t seconds, void* reserved)
+void HAL_Core_Enter_Standby_Mode(uint32_t seconds, uint32_t flags)
 {
     // Configure RTC wake-up
     if (seconds > 0) {
@@ -741,19 +790,29 @@ void HAL_Core_Enter_Standby_Mode(uint32_t seconds, void* reserved)
         HAL_RTC_Set_UnixAlarm((time_t) seconds);
     }
 
-    HAL_Core_Execute_Standby_Mode();
+    HAL_Core_Execute_Standby_Mode_Ext(flags, NULL);
 }
 
-void HAL_Core_Execute_Standby_Mode(void)
+void HAL_Core_Execute_Standby_Mode_Ext(uint32_t flags, void* reserved)
 {
+    if ((flags & HAL_STANDBY_MODE_FLAG_DISABLE_WKP_PIN) == 0) {
     /* Enable WKUP pin */
     PWR_WakeUpPinCmd(ENABLE);
+    } else {
+        /* Disable WKUP pin */
+        PWR_WakeUpPinCmd(DISABLE);
+    }
 
     /* Request to enter STANDBY mode */
     PWR_EnterSTANDBYMode();
 
     /* Following code will not be reached */
     while(1);
+}
+
+void HAL_Core_Execute_Standby_Mode(void)
+{
+    HAL_Core_Execute_Standby_Mode_Ext(0, NULL);
 }
 
 /**
@@ -1243,6 +1302,8 @@ unsigned HAL_Core_System_Clock(HAL_SystemClock clock, void* reserved)
     return SystemCoreClock;
 }
 
+extern size_t pvPortLargestFreeBlock();
+
 uint32_t HAL_Core_Runtime_Info(runtime_info_t* info, void* reserved)
 {
     struct mallinfo heapinfo = mallinfo();
@@ -1264,7 +1325,16 @@ uint32_t HAL_Core_Runtime_Info(runtime_info_t* info, void* reserved)
         info->user_static_ram = info->total_init_heap - info->total_heap;
     }
 
+    if (offsetof(runtime_info_t, largest_free_block_heap) + sizeof(info->largest_free_block_heap) <= info->size) {
+    		info->largest_free_block_heap = pvPortLargestFreeBlock();
+    }
+
     return 0;
+}
+
+void vApplicationMallocFailedHook(size_t xWantedSize)
+{
+	hal_notify_event(HAL_EVENT_OUT_OF_MEMORY, xWantedSize, 0);
 }
 
 int HAL_Feature_Set(HAL_Feature feature, bool enabled)
@@ -1308,6 +1378,12 @@ int HAL_Feature_Set(HAL_Feature feature, bool enabled)
             return 0;
         }
 #endif
+#if HAL_PLATFORM_CLOUD_UDP
+        case FEATURE_CLOUD_UDP: {
+            const uint8_t data = (enabled ? 0xff : 0x00);
+            return dct_write_app_data(&data, DCT_CLOUD_TRANSPORT_OFFSET, sizeof(data));
+        }
+#endif // HAL_PLATFORM_CLOUD_UDP
     }
     return -1;
 }

@@ -21,6 +21,8 @@ SYSTEM=system/
 HAL=hal/
 PLATFORM=platform/
 WIRING_SRC=$(WIRING)src/
+WIRING_GLOBALS=wiring_globals/
+WIRING_GLOBALS_SRC=${WIRING_GLOBALS}src
 
 TARGETDIR=obj/
 TARGET=runner
@@ -53,18 +55,30 @@ CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_character.cpp)
 CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_led.cpp)
 CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_diagnostics.cpp)
 CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_cellular_printable.cpp)
+CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_i2c.cpp)
 CPPSRC += $(call target_files,$(WIRING_SRC),spark_wiring_wifi.cpp)
 CPPSRC += $(call target_files,$(WIRING_SRC),string_convert.cpp)
+CPPSRC += $(call target_files,$(WIRING_SRC),string_convert.cpp)
+CPPSRC += $(call target_files,$(WIRING_GLOBALS_SRC),wiring_globals_i2c.cpp)
 CPPSRC += $(call target_files,$(SYSTEM)src/,system_utilities.cpp)
 CPPSRC += $(call target_files,$(SYSTEM)src/,system_mode.cpp)
 CPPSRC += $(call target_files,$(SYSTEM)src/,system_string_interpolate.cpp)
 CPPSRC += $(call target_files,$(SYSTEM)src/,system_led_signal.cpp)
+CPPSRC += $(call target_files,$(SYSTEM)src/,active_object.cpp)
+CPPSRC += $(call target_files,$(SYSTEM)src/,usb_control_request_channel.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,filesystem.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,device_config.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,core_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/gcc,timer_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/gcc,rgbled_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/gcc,wlan_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/gcc,net_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/gcc,delay_hal.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,usb_hal.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,deviceid_hal.cpp)
+CPPSRC += $(call target_files,$(HAL)src/gcc,interrupts_hal.cpp)
 CPPSRC += $(call target_files,$(HAL)src/electron,cellular_internal.cpp)
+CPPSRC += $(call target_files,$(HAL)src/template,i2c_hal.cpp)
 
 # Paths to dependent projects, referenced from root of this project
 LIB_SERVICES = services/
@@ -88,6 +102,7 @@ INCLUDE_DIRS += $(SRC_PATH)stubs
 INCLUDE_DIRS += $(LIB_SERVICES)inc
 INCLUDE_DIRS += $(WIRING)inc
 INCLUDE_DIRS += $(SYSTEM)inc
+INCLUDE_DIRS += $(SYSTEM)src
 INCLUDE_DIRS += $(HAL)shared
 INCLUDE_DIRS += $(HAL)inc
 INCLUDE_DIRS += $(HAL)src/electron
@@ -112,7 +127,7 @@ endif
 DEFINES += UNIT_TEST BOOST_NO_AUTO_PTR USE_STDPERIPH_DRIVER
 ABS_INCLUDE_DIRS += $(BOOST_ROOT)
 LIB_DIRS += $(BOOST_ROOT)/stage/lib
-LIBS += boost_regex boost_system boost_thread
+LIBS += boost_program_options boost_regex boost_system boost_thread
 export DYLD_LIBRARY_PATH=$(BOOST_ROOT)/stage/lib
 
 CFLAGS += $(patsubst %,-I%,$(ABS_INCLUDE_DIRS)) -I.

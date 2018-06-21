@@ -29,8 +29,18 @@
 #include "spark_wiring_power.h"
 
 FuelGauge::FuelGauge(bool _lock) :
-    lock_(_lock)
+#if (PLATFORM_ID == PLATFORM_ELECTRON_PRODUCTION)
+    FuelGauge(Wire3, _lock)
+#else
+    FuelGauge(Wire, _lock)
+#endif /* (PLATFORM_ID == PLATFORM_ELECTRON_PRODUCTION) */
 {
+}
+
+FuelGauge::FuelGauge(TwoWire& i2c, bool _lock)
+    : i2c_(i2c),
+      lock_(_lock) {
+
     if (lock_) {
         lock();
     }
@@ -45,8 +55,10 @@ FuelGauge::~FuelGauge()
 
 boolean FuelGauge::begin()
 {
-	// this should be unecessary since, begin is already called from pmic setup
-	return 1;
+    if (!i2c_.isEnabled()) {
+		i2c_.begin();
+    }
+    return i2c_.isEnabled();
 }
 
 namespace detail {
@@ -183,6 +195,7 @@ void FuelGauge::quickStart() {
 }
 
 void FuelGauge::sleep() {
+
     std::lock_guard<FuelGauge> l(*this);
 	byte MSB = 0;
 	byte LSB = 0;
@@ -206,45 +219,34 @@ void FuelGauge::wakeup() {
 
 
 void FuelGauge::readConfigRegister(byte &MSB, byte &LSB) {
-
 	readRegister(CONFIG_REGISTER, MSB, LSB);
 }
 
 
 void FuelGauge::readRegister(byte startAddress, byte &MSB, byte &LSB) {
     std::lock_guard<FuelGauge> l(*this);
-#if Wiring_Wire3
-	Wire3.beginTransmission(MAX17043_ADDRESS);
-    Wire3.write(startAddress);
-    Wire3.endTransmission(true);
+    i2c_.beginTransmission(MAX17043_ADDRESS);
+    i2c_.write(startAddress);
+    i2c_.endTransmission(true);
 
-    Wire3.requestFrom(MAX17043_ADDRESS, 2, true);
-    MSB = Wire3.read();
-    LSB = Wire3.read();
-#endif
+    i2c_.requestFrom(MAX17043_ADDRESS, 2, true);
+    MSB = i2c_.read();
+    LSB = i2c_.read();
 }
 
 void FuelGauge::writeRegister(byte address, byte MSB, byte LSB) {
     std::lock_guard<FuelGauge> l(*this);
-#if Wiring_Wire3
-	Wire3.beginTransmission(MAX17043_ADDRESS);
-    Wire3.write(address);
-    Wire3.write(MSB);
-    Wire3.write(LSB);
-    Wire3.endTransmission(true);
-#endif
+    i2c_.beginTransmission(MAX17043_ADDRESS);
+    i2c_.write(address);
+    i2c_.write(MSB);
+    i2c_.write(LSB);
+    i2c_.endTransmission(true);
 }
 
 bool FuelGauge::lock() {
-#if Wiring_Wire3
-    return Wire3.lock();
-#endif
-    return false;
+    return i2c_.lock();
 }
 
 bool FuelGauge::unlock() {
-#if Wiring_Wire3
-    return Wire3.unlock();
-#endif
-    return false;
+	return i2c_.unlock();
 }
